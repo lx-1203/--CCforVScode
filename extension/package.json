@@ -1,0 +1,504 @@
+{
+  "name": "claude-code",
+  "displayName": "星迹的CC✨",
+  "description": "星迹的CC✨ - 基于 Claude Code 的汉化增强版",
+  "version": "2.1.92",
+  "publisher": "xingji",
+  "license": "© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.",
+  "bugs": {
+    "url": "https://github.com/anthropics/claude-code/issues",
+    "email": "support@anthropic.com"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "claude",
+    "sonnet",
+    "ai",
+    "mcp",
+    "agent"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onWebviewPanel:claudeVSCodePanel"
+  ],
+  "icon": "resources/claude-logo.png",
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "星迹的CC✨",
+      "properties": {
+        "claudeCode.environmentVariables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "环境变量名称"
+              },
+              "value": {
+                "type": "string",
+                "description": "环境变量值"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          },
+          "default": [],
+          "description": "启动 Claude 时设置的环境变量。\n\n建议在 Claude 的 settings.json 中设置环境变量。\n详见文档: https://code.claude.com/docs/en/settings"
+        },
+        "claudeCode.useTerminal": {
+          "type": "boolean",
+          "default": false,
+          "description": "在终端中启动 Claude，而非原生界面。"
+        },
+        "claudeCode.allowDangerouslySkipPermissions": {
+          "type": "boolean",
+          "description": "允许跳过权限确认模式。仅建议在无网络访问的沙盒环境中使用。"
+        },
+        "claudeCode.claudeProcessWrapper": {
+          "type": "string",
+          "description": "用于启动 Claude 进程的可执行文件路径。"
+        },
+        "claudeCode.respectGitIgnore": {
+          "type": "boolean",
+          "default": true,
+          "description": "搜索文件时遵守 .gitignore 规则。提示：禁用此选项后，仍可在 .ignore 中使用其他排除规则进行过滤。"
+        },
+        "claudeCode.initialPermissionMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "default": "bypassPermissions",
+          "description": "新对话的初始权限模式。"
+        },
+        "claudeCode.disableLoginPrompt": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用后，扩展将不再提示登录/认证。适用于外部处理认证的场景。"
+        },
+        "claudeCode.autosave": {
+          "type": "boolean",
+          "default": true,
+          "description": "在 Claude 读取或写入文件前自动保存。"
+        },
+        "claudeCode.useCtrlEnterToSend": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用后，使用 Ctrl/Cmd+Enter 发送提示而非 Enter。这样 Enter 键可用于换行。"
+        },
+        "claudeCode.preSend": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用预发送模式：AI 运行时按 Enter 不会中断当前生成，而是将消息排队，等 AI 完成后自动发送。类似 Codex 的 Tab 预发送功能。"
+        },
+        "claudeCode.preferredLocation": {
+          "type": "string",
+          "enum": [
+            "sidebar",
+            "panel"
+          ],
+          "enumDescriptions": [
+            "侧边栏 (右侧)",
+            "面板 (新标签页)"
+          ],
+          "default": "panel",
+          "description": "Claude 默认打开的位置。当你在新位置打开 Claude 时，此设置会自动更新。"
+        },
+        "claudeCode.enableNewConversationShortcut": {
+          "type": "boolean",
+          "default": false,
+          "description": "当 Claude 处于焦点时，使用 Cmd/Ctrl+N 快捷键开始新对话。"
+        },
+        "claudeCode.hideOnboarding": {
+          "type": "boolean",
+          "default": false,
+          "description": "隐藏 星迹的CC✨ 中的新手引导清单。"
+        },
+        "claudeCode.usePythonEnvironment": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "运行 Claude 时自动激活工作区的 Python 环境。需要安装 [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python) 扩展。"
+        },
+        "claudeCode.taskCompletionNotification": {
+          "type": "boolean",
+          "default": true,
+          "description": "当任务完成且 Claude 面板不可见时，显示弹窗通知。"
+        },
+        "claudeCode.taskCompletionSound": {
+          "type": "boolean",
+          "default": true,
+          "description": "当任务完成且 Claude 面板不可见时，播放提示音。"
+        }
+      }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": [
+          "**/.claude/settings.json",
+          "**/.claude/settings.local.json",
+          "**/ClaudeCode/managed-settings.json",
+          "**/claude-code/managed-settings.json"
+        ],
+        "url": "./claude-code-settings.schema.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "claude-vscode.editor.open",
+        "title": "星迹的CC✨: 在新标签页中打开",
+        "icon": {
+          "light": "resources/claude-logo.svg",
+          "dark": "resources/claude-logo.svg"
+        }
+      },
+      {
+        "command": "claude-vscode.editor.openLast",
+        "title": "星迹的CC✨: 打开",
+        "icon": {
+          "light": "resources/claude-logo.svg",
+          "dark": "resources/claude-logo.svg"
+        }
+      },
+      {
+        "command": "claude-vscode.primaryEditor.open",
+        "title": "星迹的CC✨: 在主编辑器中打开",
+        "icon": {
+          "light": "resources/claude-logo.svg",
+          "dark": "resources/claude-logo.svg"
+        }
+      },
+      {
+        "command": "claude-vscode.window.open",
+        "title": "星迹的CC✨: 在新窗口中打开"
+      },
+      {
+        "command": "claude-vscode.createWorktree",
+        "title": "星迹的CC✨: 创建 Worktree"
+      },
+      {
+        "command": "claude-vscode.sidebar.open",
+        "title": "星迹的CC✨: 在侧边栏中打开",
+        "icon": {
+          "light": "resources/claude-logo.svg",
+          "dark": "resources/claude-logo.svg"
+        }
+      },
+      {
+        "command": "claude-vscode.newConversation",
+        "title": "星迹的CC✨: 新建对话"
+      },
+      {
+        "command": "claude-vscode.update",
+        "title": "星迹的CC✨: 更新扩展"
+      },
+      {
+        "command": "claude-vscode.focus",
+        "title": "星迹的CC✨: 聚焦输入框"
+      },
+      {
+        "command": "claude-vscode.blur",
+        "title": "星迹的CC✨: 取消聚焦"
+      },
+      {
+        "command": "claude-vscode.logout",
+        "title": "星迹的CC✨: 退出登录"
+      },
+      {
+        "command": "claude-vscode.terminal.open",
+        "title": "星迹的CC✨: 在终端中打开",
+        "icon": {
+          "light": "resources/claude-logo.svg",
+          "dark": "resources/claude-logo.svg"
+        }
+      },
+      {
+        "command": "claude-vscode.acceptProposedDiff",
+        "title": "星迹的CC✨: 接受建议的更改",
+        "enablement": "claude-vscode.viewingProposedDiff",
+        "icon": "$(check)"
+      },
+      {
+        "command": "claude-vscode.rejectProposedDiff",
+        "title": "星迹的CC✨: 拒绝建议的更改",
+        "enablement": "claude-vscode.viewingProposedDiff",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "claude-vscode.insertAtMention",
+        "title": "星迹的CC✨: 插入 @提及 引用"
+      },
+      {
+        "command": "claude-vscode.installPlugin",
+        "title": "星迹的CC✨: 安装插件"
+      },
+      {
+        "command": "claude-code.acceptProposedDiff",
+        "title": "星迹的CC✨: 接受建议的更改",
+        "enablement": "claude-code.viewingProposedDiff",
+        "icon": "$(check)"
+      },
+      {
+        "command": "claude-code.rejectProposedDiff",
+        "title": "星迹的CC✨: 拒绝建议的更改",
+        "enablement": "claude-code.viewingProposedDiff",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "claude-code.insertAtMentioned",
+        "title": "星迹的CC✨: 插入@提及"
+      },
+      {
+        "command": "claude-vscode.showLogs",
+        "title": "星迹的CC✨: 显示日志"
+      },
+      {
+        "command": "claude-vscode.openWalkthrough",
+        "title": "星迹的CC✨: 打开引导"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claude-vscode.insertAtMention",
+        "key": "alt+k",
+        "mac": "alt+k",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claude-vscode.focus",
+        "key": "cmd+escape",
+        "mac": "cmd+escape",
+        "win": "ctrl+escape",
+        "linux": "ctrl+escape",
+        "when": "!config.claudeCode.useTerminal && editorTextFocus"
+      },
+      {
+        "command": "claude-vscode.blur",
+        "key": "cmd+escape",
+        "mac": "cmd+escape",
+        "win": "ctrl+escape",
+        "linux": "ctrl+escape",
+        "when": "!config.claudeCode.useTerminal && !editorTextFocus"
+      },
+      {
+        "command": "claude-vscode.editor.open",
+        "key": "cmd+shift+escape",
+        "mac": "cmd+shift+escape",
+        "win": "ctrl+shift+escape",
+        "linux": "ctrl+shift+escape",
+        "when": "!config.claudeCode.useTerminal"
+      },
+      {
+        "command": "claude-vscode.terminal.open.keyboard",
+        "key": "cmd+escape",
+        "mac": "cmd+escape",
+        "win": "ctrl+escape",
+        "linux": "ctrl+escape",
+        "when": "config.claudeCode.useTerminal"
+      },
+      {
+        "command": "claude-code.insertAtMentioned",
+        "key": "cmd+alt+K",
+        "mac": "cmd+alt+K",
+        "win": "ctrl+alt+K",
+        "linux": "ctrl+alt+K",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claude-vscode.newConversation",
+        "key": "cmd+n",
+        "mac": "cmd+n",
+        "win": "ctrl+n",
+        "linux": "ctrl+n",
+        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'claudeVSCodePanel' || (claude-vscode.sideBarActive && !editorFocus && !panelFocus))"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-sidebar",
+          "title": "星迹的CC✨",
+          "icon": "resources/claude-logo.svg",
+          "when": "claude-code:doesNotSupportSecondarySidebar"
+        },
+        {
+          "id": "claude-sessions-sidebar",
+          "title": "星迹的CC✨",
+          "icon": "resources/claude-logo.svg",
+          "when": "claude-vscode.sessionsListEnabled"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "claude-sidebar-secondary",
+          "title": "星迹的CC✨",
+          "icon": "resources/claude-logo.svg",
+          "when": "!claude-code:doesNotSupportSecondarySidebar"
+        }
+      ]
+    },
+    "views": {
+      "claude-sidebar": [
+        {
+          "type": "webview",
+          "id": "claudeVSCodeSidebar",
+          "name": "星迹的CC✨",
+          "when": "claude-code:doesNotSupportSecondarySidebar"
+        }
+      ],
+      "claude-sidebar-secondary": [
+        {
+          "type": "webview",
+          "id": "claudeVSCodeSidebarSecondary",
+          "name": "星迹的CC✨",
+          "when": "!claude-code:doesNotSupportSecondarySidebar"
+        }
+      ],
+      "claude-sessions-sidebar": [
+        {
+          "type": "webview",
+          "id": "claudeVSCodeSessionsList",
+          "name": "",
+          "when": "claude-vscode.sessionsListEnabled"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "claude-code-walkthrough",
+        "title": "开始使用 星迹的CC✨",
+        "description": "学习如何使用 星迹的CC✨ 编写、编辑和理解代码。",
+        "steps": [
+          {
+            "id": "welcome",
+            "title": "你的 AI 编程伙伴",
+            "description": "星迹的CC✨ 帮助你在 VS Code 中编写、编辑和理解代码。",
+            "media": {
+              "markdown": "resources/walkthrough/step1.md"
+            }
+          },
+          {
+            "id": "open-claude",
+            "title": "打开 星迹的CC✨",
+            "description": "点击右上角的 Claude 图标，或按 Ctrl+Escape（Mac 上为 Cmd+Escape）开始对话。",
+            "media": {
+              "markdown": "resources/walkthrough/step2.md"
+            },
+            "completionEvents": [
+              "onCommand:claude-vscode.sidebar.open",
+              "onCommand:claude-vscode.editor.open"
+            ]
+          },
+          {
+            "id": "chat",
+            "title": "与 Claude 对话",
+            "description": "输入消息并按回车。提问、请求修改或获取代码理解帮助。使用 @ 提及文件以提供上下文，或先选中代码再提问。",
+            "media": {
+              "markdown": "resources/walkthrough/step3.md"
+            }
+          },
+          {
+            "id": "sessions",
+            "title": "历史对话",
+            "description": "点击顶部的「历史对话」按钮或输入 /resume 浏览过去的会话。随时点击「新建对话」按钮开始新对话。",
+            "media": {
+              "markdown": "resources/walkthrough/step4.md"
+            }
+          }
+        ]
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "claude-vscode.acceptProposedDiff",
+          "when": "claude-vscode.viewingProposedDiff",
+          "group": "navigation"
+        },
+        {
+          "command": "claude-vscode.rejectProposedDiff",
+          "when": "claude-vscode.viewingProposedDiff",
+          "group": "navigation"
+        },
+        {
+          "command": "claude-code.acceptProposedDiff",
+          "when": "claude-code.viewingProposedDiff",
+          "group": "navigation"
+        },
+        {
+          "command": "claude-code.rejectProposedDiff",
+          "when": "claude-code.viewingProposedDiff",
+          "group": "navigation"
+        },
+        {
+          "command": "claude-vscode.editor.openLast",
+          "when": "!config.claudeCode.useTerminal",
+          "group": "navigation"
+        },
+        {
+          "command": "claude-vscode.terminal.open",
+          "when": "config.claudeCode.useTerminal",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claude-vscode.update",
+          "when": "claude-vscode.updateSupported"
+        },
+        {
+          "command": "claude-vscode.editor.openLast",
+          "when": "false"
+        },
+        {
+          "command": "claude-vscode.primaryEditor.open",
+          "when": "claude-vscode.primaryEditorEnabled"
+        },
+        {
+          "command": "claude-vscode.createWorktree",
+          "when": "claude-vscode.createWorktreeEnabled"
+        },
+        {
+          "command": "claude-vscode.blur",
+          "when": "false"
+        },
+        {
+          "command": "claude-vscode.newConversation",
+          "when": "false"
+        },
+        {
+          "command": "claude-code.insertAtMentioned",
+          "when": "config.claudeCode.useTerminal"
+        },
+        {
+          "command": "claude-vscode.insertAtMention",
+          "when": "!config.claudeCode.useTerminal"
+        },
+        {
+          "command": "claude-vscode.installPlugin",
+          "when": "claude-vscode.updateSupported"
+        }
+      ]
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "untusted workspaces are not supported"
+    }
+  },
+  "scripts": {},
+  "dependencies": {}
+}
