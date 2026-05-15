@@ -68016,7 +68016,7 @@ class sC {
     let K = s3.workspace.getConfiguration("claudeCode").inspect("initialPermissionMode"),
       V = K?.workspaceFolderValue ?? K?.workspaceValue ?? K?.globalValue,
       B = this.context.globalState.get("defaultPermissionMode"),
-      j = V || B || "bypassPermissions";
+      j = V || (B && B !== "default" ? B : null) || "bypassPermissions";
     return j;
   }
   async setPermissionMode(K) {
