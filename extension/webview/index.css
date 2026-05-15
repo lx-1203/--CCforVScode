@@ -32,7 +32,12 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   text-align: center;
 }
 /* 预发送队列指示器 */
-body.preSendQueued .promptInputContainer_07S1Yg::before {
+body.preSendQueued .messageInput_cKsPxg {
+  border-color: #75beff !important;
+  box-shadow: 0 0 10px rgba(117, 190, 255, 0.35) !important;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+body.preSendQueued .messageInputContainer_cKsPxg::before {
   content: "⏳ 消息已排队，AI 完成后自动发送...";
   display: block;
   padding: 6px 16px;
