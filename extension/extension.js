@@ -56049,7 +56049,7 @@ class JE {
     }
   }
   async persistDefaultPermissionMode(K) {
-    if (K !== "default" && K !== "auto" && K !== "acceptEdits") return;
+    if (K !== "default" && K !== "auto" && K !== "acceptEdits" && K !== "bypassPermissions" && K !== "plan") return;
     if (K === this.settings.getInitialPermissionMode()) return;
     (await this.settings.setPermissionMode(K), this.pushStateUpdate());
   }
@@ -56169,6 +56169,7 @@ class JE {
       speechToTextMicDenied: this.isSpeechToTextMicDenied(),
       marketplaceType: this.getMarketplaceType(),
       useCtrlEnterToSend: this.settings.getUseCtrlEnterToSend(),
+      preSend: this.settings.getPreSend(),
       chromeMcpState: { status: "disconnected" },
       browserIntegrationSupported: this.isBrowserIntegrationSupported(),
       debuggerMcpState: { status: "inactive" },
@@ -68015,8 +68016,7 @@ class sC {
     let K = s3.workspace.getConfiguration("claudeCode").inspect("initialPermissionMode"),
       V = K?.workspaceFolderValue ?? K?.workspaceValue ?? K?.globalValue,
       B = this.context.globalState.get("defaultPermissionMode"),
-      j = V || B || "default";
-    if (j === "bypassPermissions" && !this.getAllowDangerouslySkipPermissions()) return "default";
+      j = V || B || "bypassPermissions";
     return j;
   }
   async setPermissionMode(K) {
