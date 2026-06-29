@@ -1,8 +1,8 @@
 {
-  "name": "claude-code",
+  "name": "xingjiclaudecode",
   "displayName": "星迹的CC✨",
-  "description": "星迹的CC✨ - 基于 Claude Code 的汉化增强版",
-  "version": "2.1.92",
+  "description": "星迹的CC✨ - 基于 Claude Code 的汉化增强版 (预发送 Pre-Send 功能)",
+  "version": "2.1.95",
   "publisher": "xingji",
   "license": "© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.",
   "bugs": {
@@ -102,7 +102,12 @@
         "claudeCode.preSend": {
           "type": "boolean",
           "default": false,
-          "description": "启用预发送模式：AI 运行时按 Enter 不会中断当前生成，而是将消息排队，等 AI 完成后自动发送。类似 Codex 的 Tab 预发送功能。"
+          "description": "启用预发送模式：AI 运行时按 Tab 或 Enter 不会中断当前生成，而是将消息排队，等 AI 完成后自动发送。类似 Codex 的 Steer 预发送功能。"
+        },
+        "claudeCode.askUserQuestion": {
+          "type": "boolean",
+          "default": true,
+          "description": "YOLO 模式下，当 Claude 主动提问（AskUserQuestion）时弹出选项让你手动选择，而不是自动跳过。关闭后 YOLO 会自动跳过所有提问。"
         },
         "claudeCode.preferredLocation": {
           "type": "string",
@@ -121,6 +126,11 @@
           "type": "boolean",
           "default": false,
           "description": "当 Claude 处于焦点时，使用 Cmd/Ctrl+N 快捷键开始新对话。"
+        },
+        "claudeCode.enableReopenClosedSessionShortcut": {
+          "type": "boolean",
+          "default": true,
+          "description": "使用 Cmd/Ctrl+Shift+T 重新打开最近关闭的 Claude 会话标签页。仅当最后关闭的是 Claude 标签页时才拦截该快捷键，否则按 VS Code 默认行为重新打开关闭的编辑器。"
         },
         "claudeCode.hideOnboarding": {
           "type": "boolean",
@@ -141,6 +151,26 @@
           "type": "boolean",
           "default": true,
           "description": "当任务完成且 Claude 面板不可见时，播放提示音。"
+        },
+        "claudeCode.audioFeedback.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用自定义音频反馈，在任务完成、报错或 AI 提问时播放指定的音频文件（替代系统 beep 音）。"
+        },
+        "claudeCode.audioFeedback.completionSoundPath": {
+          "type": "string",
+          "default": "resources/audio/主人，任务已完成，请您查收~.mp3",
+          "description": "任务完成时播放的音频文件路径（绝对路径或相对于扩展目录的路径，支持 mp3/wav/ogg/webm）。"
+        },
+        "claudeCode.audioFeedback.errorSoundPath": {
+          "type": "string",
+          "default": "resources/audio/糟糕，主人，好像遇到报错啦~快来救救我！.mp3",
+          "description": "任务报错时播放的音频文件路径（绝对路径或相对于扩展目录的路径，支持 mp3/wav/ogg/webm）。"
+        },
+        "claudeCode.audioFeedback.questionSoundPath": {
+          "type": "string",
+          "default": "resources/audio/主人，我有个问题想问你。.mp3",
+          "description": "AI 在 YOLO 模式下提问时播放的音频文件路径（绝对路径或相对于扩展目录的路径，支持 mp3/wav/ogg/webm）。"
         }
       }
     },
@@ -199,6 +229,10 @@
       {
         "command": "claude-vscode.newConversation",
         "title": "星迹的CC✨: 新建对话"
+      },
+      {
+        "command": "claude-vscode.reopenClosedSession",
+        "title": "星迹的CC✨: 重新打开已关闭的会话"
       },
       {
         "command": "claude-vscode.update",
@@ -267,6 +301,10 @@
       {
         "command": "claude-vscode.openWalkthrough",
         "title": "星迹的CC✨: 打开引导"
+      },
+      {
+        "command": "claude-vscode.optimizePrompt",
+        "title": "星迹的CC✨: 优化提示词"
       }
     ],
     "keybindings": [
@@ -323,6 +361,22 @@
         "win": "ctrl+n",
         "linux": "ctrl+n",
         "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'claudeVSCodePanel' || (claude-vscode.sideBarActive && !editorFocus && !panelFocus))"
+      },
+      {
+        "command": "claude-vscode.optimizePrompt",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "win": "ctrl+shift+o",
+        "linux": "ctrl+shift+o",
+        "when": "activeWebviewPanelId == 'claudeVSCodePanel' || claude-vscode.sideBarActive"
+      },
+      {
+        "command": "claude-vscode.reopenClosedSession",
+        "key": "cmd+shift+t",
+        "mac": "cmd+shift+t",
+        "win": "ctrl+shift+t",
+        "linux": "ctrl+shift+t",
+        "when": "config.claudeCode.enableReopenClosedSessionShortcut && claude-vscode.lastClosedWasSession"
       }
     ],
     "viewsContainers": {

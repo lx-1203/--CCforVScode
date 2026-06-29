@@ -1,3 +1,4 @@
 *.vsix
 *.zip
 .claude/
+extension/resources/native-binary/

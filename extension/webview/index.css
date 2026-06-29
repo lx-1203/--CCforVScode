@@ -32,24 +32,206 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   text-align: center;
 }
 /* 预发送队列指示器 */
-body.preSendQueued .messageInput_cKsPxg {
-  border-color: #75beff !important;
-  box-shadow: 0 0 10px rgba(117, 190, 255, 0.35) !important;
+/* 预发送 (Pre-Send) 队列功能样式 — Tab/Enter 键排队，不中断 AI */
+.messageInputContainer_cKsPxg[data-pre-send-active] .messageInput_cKsPxg {
+  border-color: #e8a040 !important;
+  box-shadow: 0 0 0 1px #e8a040 !important;
   transition: border-color 0.3s, box-shadow 0.3s;
 }
-body.preSendQueued .messageInputContainer_cKsPxg::before {
-  content: "⏳ 消息已排队，AI 完成后自动发送...";
-  display: block;
-  padding: 6px 16px;
-  margin-bottom: 6px;
-  background: var(--vscode-editorInfo-background, #1e3a5f);
-  color: var(--vscode-editorInfo-foreground, #75beff);
+.preSendPreview {
+  background: #1e1e1e;
+  border: 1px solid #e8a040;
   border-radius: 6px;
-  font-size: 12px;
-  text-align: center;
-  animation: preSendPulse 1.5s ease-in-out infinite;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  color: #cccccc;
+  font-size: 13px;
+  line-height: 1.5;
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(232,160,64,0.3), 0 2px 8px rgba(0,0,0,0.3);
 }
-@keyframes preSendPulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+.preSendPreview .preSendPreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: #e8a040;
+}
+.preSendPreview .preSendPreviewHeader svg {
+  vertical-align: -1px;
+  margin-right: 3px;
+}
+.preSendPreview .preSendPreviewCount {
+  background: rgba(232,160,64,0.15);
+  color: #e8a040;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.preSendPreview .preSendPreviewText {
+  color: #cccccc;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.preSendPreview .preSendPreviewItems {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.preSendPreview .preSendPreviewItems.preSendPreviewScroll {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232,160,64,0.3) transparent;
+}
+.preSendPreview .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar {
+  width: 5px;
+}
+.preSendPreview .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.preSendPreview .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-thumb {
+  background: rgba(232,160,64,0.3);
+  border-radius: 3px;
+}
+.preSendPreview .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(232,160,64,0.5);
+}
+.preSendPreview .preSendPreviewItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(232,160,64,0.15);
+}
+.preSendPreview .preSendPreviewItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.preSendPreview .preSendPreviewItem:first-child {
+  padding-top: 0;
+}
+.preSendPreview .preSendPreviewItemText {
+  flex: 1;
+  color: #cccccc;
+  word-break: break-word;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.preSendPreview .preSendPreviewItemActions {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.preSendPreview .preSendPreviewBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.preSendPreview .preSendPreviewBtn:hover {
+  border-color: rgba(255,255,255,0.25);
+}
+.preSendPreview .preSendPreviewBtnSend:hover {
+  color: #4ec9b0;
+  background: rgba(78,201,176,0.12);
+  border-color: rgba(78,201,176,0.35);
+}
+.preSendPreview .preSendPreviewBtnDelete:hover {
+  color: #f14c4c;
+  background: rgba(241,76,76,0.12);
+  border-color: rgba(241,76,76,0.35);
+}
+.preSendPreview .preSendPreviewHint {
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+}
+/* 首次使用引导动画 */
+.preSendPreview.preSendGuided {
+  animation: preSendGuidedFade 5s ease-out forwards;
+}
+@keyframes preSendGuidedFade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* 优化中预览状态 */
+.preSendPreview.preSendOptimizing {
+  border-color: #4ec9b0;
+  box-shadow: 0 0 0 1px rgba(78,201,176,0.3), 0 2px 8px rgba(0,0,0,0.3);
+}
+.preSendPreview.preSendOptimizing .preSendPreviewHeader {
+  color: #4ec9b0;
+}
+.preSendPreviewOptElapsed {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.preSendPreviewItemOptimizing {
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.preSendPreviewOptLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #4ec9b0;
+}
+.preSendPreviewOptLabel svg {
+  flex-shrink: 0;
+}
+.preSendPreviewItemOptimizing .preSendPreviewItemText {
+  opacity: 0.5;
+  font-size: 12px;
+  max-height: 60px;
+  overflow: hidden;
+}
+.preSendPreviewItemOptimizing .preSendPreviewItemActions {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+/* 提示词优化按钮 */
+.optimizeButton_gGYT1w {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, inherit);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: all 0.15s;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.optimizeButton_gGYT1w:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground, #e8e8e8);
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+.optimizeButton_gGYT1w:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

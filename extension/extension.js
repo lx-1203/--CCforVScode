@@ -55017,7 +55017,11 @@ class JE {
           },
           (L, W, O) => {
             if (Dj(L)) {
-              if (O !== null) this.openMarkdownPreview(K, O, Eo(O) ?? gD);
+              if (O !== null) {
+                this.openMarkdownPreview(K, O, Eo(O) ?? gD);
+                this.channelPlanMode.add(K);
+                this.updateStatusBarText(K);
+              }
               return;
             }
             this.send({ type: "file_updated", channelId: K, filePath: L, oldContent: W, newContent: O });
@@ -55053,8 +55057,10 @@ class JE {
         debuggerMcpState: this.getInitialDebuggerState(),
         jupyterMcpState: this.getInitialJupyterState(),
         remoteControlState: { status: "disconnected" },
+        permissionMode: j,
       }),
         this.claudeLaunched(K),
+        this.updateStatusBarText(K),
         Z.initializationResult()
           .then((L) => {
             q(L.pid ?? 0);
@@ -55077,6 +55083,22 @@ class JE {
                 }
                 continue;
               }
+              if (L.type === "system" && L.subtype === "status") {
+                console.error("[YOLO-Plan] system status msg:", JSON.stringify({perm: L.permissionMode, status: L.status}));
+                let O = this.channels.get(K);
+                console.error("[YOLO-Plan] channel permissionMode:", O?.permissionMode);
+                if (O?.permissionMode === "bypassPermissions") {
+                  if (L.permissionMode === "plan") {
+                    console.error("[YOLO-Plan] ENTER plan mode, adding to channelPlanMode");
+                    this.channelPlanMode.add(K);
+                    this.updateStatusBarText(K);
+                  } else if (L.permissionMode !== "plan" && this.channelPlanMode.has(K)) {
+                    console.error("[YOLO-Plan] EXIT plan mode, removing from channelPlanMode");
+                    this.channelPlanMode.delete(K);
+                    this.updateStatusBarText(K);
+                  }
+                }
+              }
               (this.send({ type: "io_message", channelId: K, message: L, done: !1 }), br(L));
             }
             this.closeChannel(K, !0);
@@ -55090,8 +55112,39 @@ class JE {
   }
   claudeLaunched(K) {}
   async requestToolPermission(K, V, B, j, H) {
+    console.error("[PERM-DEBUG] requestToolPermission called:", V, "allowPlanMode:", this.allowPlanMode);
+    this.logger.log(`[DEBUG] requestToolPermission: tool=${V}, askUserQuestion=${this.settings.getAskUserQuestion()}`);
     if (this.channels.get(K)?.chromeMcpState.status === "connected" && V.startsWith("mcp__claude-in-chrome__"))
       return { behavior: "allow", updatedInput: B };
+    if (V === "EnterPlanMode") {
+      console.error("[PERM-DEBUG] EnterPlanMode detected, allowPlanMode:", this.allowPlanMode);
+      let G = this.channels.get(K);
+      console.error("[PERM-DEBUG] channel permissionMode:", G?.permissionMode);
+      if (!this.allowPlanMode && G?.permissionMode === "bypassPermissions") {
+        console.error("[PERM-DEBUG] DENY EnterPlanMode");
+        return { behavior: "deny" };
+      }
+      console.error("[PERM-DEBUG] ALLOW EnterPlanMode");
+      this.channelPlanMode.add(K);
+      this.updateStatusBarText(K);
+    }
+    if (V === "ExitPlanMode") {
+      let G = this.channels.get(K);
+      if (G?.permissionMode === "bypassPermissions") this.closePlanPreview(K);
+      this.channelPlanMode.delete(K);
+      this.updateStatusBarText(K);
+    }
+    if (V === "AskUserQuestion" && this.settings.getAskUserQuestion())
+      try {
+        let G = await this.sendRequest(
+          K,
+          { type: "tool_permission_request", toolName: V, inputs: B, suggestions: j },
+          H,
+        );
+        if (G?.type === "tool_permission_response" && G.result) return G.result;
+      } catch (G) {
+        return { behavior: "allow", updatedInput: B };
+      }
     return { behavior: "allow", updatedInput: B };
   }
   sendRequest(K, V, B) {
@@ -55562,6 +55615,8 @@ class JE {
             marketplaceType: this.getMarketplaceType(),
             useCtrlEnterToSend: this.settings.getUseCtrlEnterToSend(),
             preSend: this.settings.getPreSend(),
+            askUserQuestion: this.settings.getAskUserQuestion(),
+            audioFeedback: this.settings.getAudioFeedback(),
             chromeMcpState: j?.chromeMcpState ?? { status: "disconnected" },
             browserIntegrationSupported: this.isBrowserIntegrationSupported(),
             debuggerMcpState: j?.debuggerMcpState ?? this.getInitialDebuggerState(),
@@ -55693,6 +55748,16 @@ class JE {
         return this.setModel(K.channelId, K.request.model);
       case "set_thinking_level":
         return this.setThinkingLevel(K.channelId, K.request.thinkingLevel);
+      case "set_presend":
+        return this.setPreSend(K.channelId, K.request.enabled);
+      case "set_allow_plan":
+        return this.setAllowPlanMode(K.channelId, K.request.enabled);
+      case "set_ask_user_question":
+        return this.setAskUserQuestion(K.channelId, K.request.enabled);
+      case "set_audio_feedback":
+        return this.setAudioFeedback(K.channelId, K.request.enabled);
+      case "optimize_prompt":
+        return this.optimizePrompt(K.request.text, K.request.cwd, K.request.selection, K.request.activeFile, V);
       case "apply_settings":
         return this.applySettings(K.channelId, K.request.settings);
       case "save_custom_config": {
@@ -56040,6 +56105,8 @@ class JE {
     if (!j) throw Error(`Channel not found: ${K}`);
     try {
       if ((await j.query.setPermissionMode(V), B)) this.persistDefaultPermissionMode(V);
+      j.permissionMode = V;
+      this.updateStatusBarText(K);
       return { type: "set_permission_mode_response", success: !0 };
     } catch (H) {
       return (
@@ -56068,6 +56135,127 @@ class JE {
       await this.settings.setThinkingLevel(V),
       { type: "set_thinking_level_response" }
     );
+  }
+  async setPreSend(K, V) {
+    await this.settings.setPreSend(V);
+    this.pushStateUpdate();
+    return { type: "set_presend_response" };
+  }
+  async setAllowPlanMode(K, V) {
+    this.allowPlanMode = V;
+    this.pushStateUpdate();
+    return { type: "set_allow_plan_response" };
+  }
+  async setAskUserQuestion(K, V) {
+    await this.settings.setAskUserQuestion(V);
+    this.pushStateUpdate();
+    return { type: "set_ask_user_question_response" };
+  }
+  async setAudioFeedback(K, V) {
+    await this.settings.setAudioFeedback(V);
+    this.pushStateUpdate();
+    return { type: "set_audio_feedback_response" };
+  }
+  async optimizePrompt(K, V, B, j, signal) {
+    let H0 = Date.now();
+    try {
+      // 收集项目上下文
+      let G0 = "";
+      let projectDir = V || this.cwd;
+      try {
+        if (projectDir) {
+          let X0 = oD.join(projectDir, "package.json");
+          try {
+            let Q0 = JSON.parse(await S2.readFile(X0, "utf-8"));
+            G0 += "项目: " + (Q0.name || oD.basename(projectDir)) + "\n";
+            let deps = { ...Q0.dependencies, ...Q0.devDependencies };
+            let keys = Object.keys(deps);
+            if (keys.length > 0) {
+              let frameworks = keys.filter(k => ["react","vue","angular","next","nuxt","svelte","express","koa","fastify","django","flask","spring","gin","echo"].some(f => k.toLowerCase().includes(f)));
+              if (frameworks.length > 0) G0 += "框架: " + frameworks.join(", ") + "\n";
+              let bundlers = keys.filter(k => ["webpack","vite","rollup","esbuild","turbo","parcel"].some(f => k.toLowerCase().includes(f)));
+              if (bundlers.length > 0) G0 += "构建工具: " + bundlers.join(", ") + "\n";
+              let langs = keys.filter(k => ["typescript","ts-node","tsx","ts-jest","@types/"].some(f => k.toLowerCase().includes(f)));
+              if (langs.length > 0) G0 += "语言: TypeScript\n";
+            }
+          } catch {}
+          // 检查文件结构
+          try {
+            let files = await S2.readdir(projectDir);
+            let keyDirs = files.filter(f => ["src","app","lib","components","pages","api","utils","hooks","services","tests","__tests__","spec"].includes(f));
+            if (keyDirs.length > 0) G0 += "关键目录: " + keyDirs.join(", ") + "\n";
+          } catch {}
+        }
+      } catch {}
+      if (j) G0 += "当前文件: " + j + "\n";
+      if (B) {
+        let Z0 = B.length > 2000 ? B.substring(0, 2000) + "\n...(已截断)" : B;
+        G0 += "选中代码:\n```\n" + Z0 + "\n```\n";
+      }
+      // 构建高质量优化提示词
+      let systemPrompt = `你是世界顶级的提示词工程师。你的任务是将用户输入的原始提示词优化为更高效、更专业、更能引导 AI 产生准确结果的版本。
+
+## 优化原则（按优先级排序）
+1. **具体化**：将模糊描述替换为具体、可操作的要求。例如"改一下这个函数"→"将 getUserData 函数中的 try-catch 块提取到单独的 errorHandler 工具函数"
+2. **结构化**：复杂任务用编号列表或分段组织，确保逻辑清晰
+3. **上下文完整**：确保提示词自包含——包含文件路径、函数名、期望行为、边界条件
+4. **指定输出格式**：明确说明期望的输出形式（代码、解释、修改方案等）
+5. **约束明确**：指明不应修改的部分、需要保持的风格、性能要求等
+6. **保持原语言**：输出语言与输入一致，不翻译
+7. **保留技术术语**：保留所有代码相关的精确术语（函数名、变量名、API名等）
+
+## 项目上下文（用于理解领域但不要在输出中重复）
+${G0 || "无特定项目上下文"}
+
+## 输出要求
+- 只输出优化后的提示词文本，不要任何解释、开场白、结尾语
+- 不要使用 Markdown 格式（不要加粗、代码块、标题等）
+- 如果原始提示词已经很优秀，可以保持原样
+- 优化后的文本长度应与原文本相近或略长（因为增加了具体性）
+
+## 待优化文本：
+${K || ""}`;
+
+      let T0 = new v2();
+      T0.enqueue({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: systemPrompt }] },
+      });
+      T0.done();
+      let N = await this.spawnClaude(T0, void 0, async () => ({ behavior: "deny", message: "优化专用" }), void 0, this.cwd, "default", !1, 0, void 0),
+        W0 = "";
+      try {
+        for await (let _ of N) {
+          if (signal?.aborted) throw new Error("Aborted");
+          if (_.type === "stream_event" && _.event?.type === "content_block_delta" && _.event.delta?.type === "text_delta")
+            W0 += _.event.delta.text;
+          if (_.type === "result") {
+            let G = W0.trim();
+            // 检测执行错误（权限拒绝、超时、API 错误、达到最大轮次等）
+            if (_.is_error && !G) {
+              let errMsg = Array.isArray(_.errors) && _.errors.length ? _.errors.join("; ") : (_.result || _.subtype || "优化执行出错");
+              return { type: "optimize_prompt_response", text: K, error: errMsg, elapsed: Date.now() - H0 };
+            }
+            // 无任何输出：视为失败而非"与原文相同"
+            if (!G) return { type: "optimize_prompt_response", text: K, error: "未获取到优化结果", elapsed: Date.now() - H0 };
+            // 输出与原文完全一致：合法的"无需优化"，非错误
+            if (G === K) return { type: "optimize_prompt_response", text: K, elapsed: Date.now() - H0 };
+            // 清理 Markdown 格式
+            G = G.replace(/```[\s\S]*?```/g, "").replace(/`([^`]+)`/g, "$1");
+            G = G.replace(/^#{1,6}\s+/gm, "").replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1");
+            G = G.replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "");
+            G = G.replace(/^>\s+/gm, "").replace(/~~([^~]+)~~/g, "$1");
+            G = G.replace(/\n{3,}/g, "\n\n").trim();
+            return { type: "optimize_prompt_response", text: G || K, elapsed: Date.now() - H0 };
+          }
+        }
+      } catch (_) {
+        return { type: "optimize_prompt_response", text: K, error: _.message || String(_), elapsed: Date.now() - H0 };
+      }
+      return { type: "optimize_prompt_response", text: W0.trim() || K, error: W0.trim() ? void 0 : "未获取到优化结果", elapsed: Date.now() - H0 };
+    } catch (Q0) {
+      return { type: "optimize_prompt_response", text: K, error: Q0.message || String(Q0), elapsed: Date.now() - H0 };
+    }
   }
   async loadUserSettings() {
     let K = l8(),
@@ -56170,6 +56358,8 @@ class JE {
       marketplaceType: this.getMarketplaceType(),
       useCtrlEnterToSend: this.settings.getUseCtrlEnterToSend(),
       preSend: this.settings.getPreSend(),
+      askUserQuestion: this.settings.getAskUserQuestion(),
+      audioFeedback: this.settings.getAudioFeedback(),
       chromeMcpState: { status: "disconnected" },
       browserIntegrationSupported: this.isBrowserIntegrationSupported(),
       debuggerMcpState: { status: "inactive" },
@@ -68012,6 +68202,18 @@ class sC {
   async setThinkingLevel(K) {
     this.context.globalState.update("thinkingLevel", K);
   }
+  async setPreSend(K) {
+    await s3.workspace.getConfiguration("claudeCode").update("preSend", K, s3.ConfigurationTarget.Global);
+  }
+  async setAskUserQuestion(K) {
+    await s3.workspace.getConfiguration("claudeCode").update("askUserQuestion", K, s3.ConfigurationTarget.Global);
+  }
+  getAudioFeedback() {
+    return a0("audioFeedback.enabled") || !1;
+  }
+  async setAudioFeedback(K) {
+    await s3.workspace.getConfiguration("claudeCode").update("audioFeedback.enabled", K, s3.ConfigurationTarget.Global);
+  }
   getInitialPermissionMode() {
     let K = s3.workspace.getConfiguration("claudeCode").inspect("initialPermissionMode"),
       V = K?.workspaceFolderValue ?? K?.workspaceValue ?? K?.globalValue,
@@ -68030,6 +68232,10 @@ class sC {
   }
   getPreSend() {
     return a0("preSend") || !1;
+  }
+  getAskUserQuestion() {
+    let K = a0("askUserQuestion");
+    return K === void 0 ? !0 : !!K;
   }
   getHideOnboarding() {
     return a0("hideOnboarding") || !1;
@@ -71791,8 +71997,11 @@ class N5 extends JE {
   chromeMcpClient;
   browserTabsCache;
   extensionMcpServer;
+  audioDataUriCache = new Map();
+  audioPreloaded = !1;
   lastHasUnseenCompletion = !1;
   lastHasError = !1;
+  lastHasPendingPermissions = !1;
   constructor(K, V, B, j, H, G, N, x, U, Z, q, D, L, W, O, A, M = !1, F) {
     let w = K.globalState.get("experimentGates") || {},
       I = K.globalState.get("showTerminalBanner");
@@ -71851,6 +72060,8 @@ class N5 extends JE {
             v.affectsConfiguration("claudeCode.allowDangerouslySkipPermissions") ||
             v.affectsConfiguration("claudeCode.useCtrlEnterToSend") ||
             v.affectsConfiguration("claudeCode.preSend") ||
+            v.affectsConfiguration("claudeCode.askUserQuestion") ||
+            v.affectsConfiguration("claudeCode.audioFeedback.enabled") ||
             v.affectsConfiguration("claudeCode.initialPermissionMode") ||
             v.affectsConfiguration("claudeCode.spinnerVerbs")
           )
@@ -71859,7 +72070,7 @@ class N5 extends JE {
       ));
   }
   async fromClient(K) {
-    return (this.resolveClientReady(), super.fromClient(K));
+    (this.resolveClientReady(), this.preloadAudioFiles(), super.fromClient(K));
   }
   notifyVisibilityChange(K) {
     if (
@@ -71887,7 +72098,18 @@ class N5 extends JE {
   notifyToggleDictation() {
     this.send({ type: "request", channelId: "", requestId: "", request: { type: "toggle_dictation" } });
   }
-  playTaskCompletionSound() {
+  notifyOptimizePrompt() {
+    this.send({ type: "request", channelId: "", requestId: "", request: { type: "optimize_prompt_trigger" } });
+  }
+  playTaskCompletionSound(type) {
+    type = type || "completion";
+    let customPath = this.getAudioFeedbackPath(type);
+    if (customPath) {
+      this.playCustomAudio(customPath);
+      if (this.isVisible()) return;
+      this.playNativeAudio(customPath);
+      return;
+    }
     if (!(a0("taskCompletionSound") ?? !0) || this.isVisible()) return;
     let K = process.platform === "win32" ? "powershell.exe" : "sh",
       V =
@@ -71898,17 +72120,100 @@ class N5 extends JE {
       require("child_process").spawn(K, V, { detached: !0, stdio: "ignore", windowsHide: !0 }).unref();
     } catch {}
   }
+  getAudioFeedbackPath(type) {
+    try { require("fs").appendFileSync("C:/Users/lenovo/.claude/audio_debug.log", "getAudioFeedbackPath: type=" + type + " enabled=" + (a0("audioFeedback.enabled") ?? false) + "\n"); } catch {}
+    if (!(a0("audioFeedback.enabled") ?? false)) return null;
+    let pathKey;
+    if (type === "completion") pathKey = "audioFeedback.completionSoundPath";
+    else if (type === "error") pathKey = "audioFeedback.errorSoundPath";
+    else if (type === "question") pathKey = "audioFeedback.questionSoundPath";
+    else return null;
+    let path = a0(pathKey);
+    if (!path || typeof path !== "string" || path.trim() === "") return null;
+    try {
+      let fs = require("fs"),
+        pathModule = require("path");
+      if (!pathModule.isAbsolute(path))
+        path = pathModule.resolve(this.context.extensionPath, path);
+      if (!fs.existsSync(path)) return null;
+      return path;
+    } catch { return null; }
+  }
+  readAudioAsDataURI(filePath) {
+    try {
+      let fs = require("fs"),
+        path = require("path"),
+        ext = path.extname(filePath).toLowerCase(),
+        mimeMap = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".webm": "audio/webm", ".aac": "audio/aac", ".flac": "audio/flac", ".m4a": "audio/mp4" },
+        mime = mimeMap[ext] || "audio/mpeg",
+        buffer = fs.readFileSync(filePath),
+        base64 = buffer.toString("base64");
+      return "data:" + mime + ";base64," + base64;
+    } catch { return null; }
+  }
+  playCustomAudio(filePath) {
+    try { require("fs").appendFileSync("C:/Users/lenovo/.claude/audio_debug.log", "playCustomAudio: " + filePath + "\n"); } catch {}
+    let dataUri = this.audioDataUriCache.get(filePath);
+    if (!dataUri) {
+      dataUri = this.readAudioAsDataURI(filePath);
+      if (dataUri) this.audioDataUriCache.set(filePath, dataUri);
+    }
+    try { require("fs").appendFileSync("C:/Users/lenovo/.claude/audio_debug.log", "dataUri len: " + (dataUri ? dataUri.length : "NULL") + "\n"); } catch {}
+    if (!dataUri) return;
+    this.send({
+      type: "request",
+      channelId: "",
+      requestId: "",
+      request: { type: "play_audio", audioUri: dataUri }
+    });
+  }
+  playNativeAudio(filePath) {
+    try {
+      if (process.platform !== "win32") return;
+      let uri = "file:///" + filePath.replace(/\\/g, "/").replace(/ /g, "%20");
+      let psScript = `Add-Type -AssemblyName PresentationCore; $p=New-Object System.Windows.Media.MediaPlayer; $p.Volume=1.0; $p.Open('${uri}'); $p.Play(); Start-Sleep -Seconds 10; $p.Close()`;
+      require("child_process").spawn("powershell.exe", [
+        "-WindowStyle", "Hidden", "-NoProfile", "-Command", psScript
+      ], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref();
+    } catch {}
+  }
+  preloadAudioFiles() {
+    if (this.audioPreloaded) return;
+    this.audioPreloaded = !0;
+    let types = ["completion", "error", "question"];
+    for (let type of types) {
+      let path = this.getAudioFeedbackPath(type);
+      if (path && !this.audioDataUriCache.has(path)) {
+        let dataUri = this.readAudioAsDataURI(path);
+        if (dataUri) {
+          this.audioDataUriCache.set(path, dataUri);
+          this.send({ type: "request", channelId: "", requestId: "", request: { type: "preload_audio", audioUri: dataUri } });
+        }
+      }
+    }
+  }
+  notifyQuestion() {
+    let path = this.getAudioFeedbackPath("question");
+    if (path) {
+      this.playCustomAudio(path);
+      if (!this.isVisible()) this.playNativeAudio(path);
+    }
+  }
   notifyTaskCompletion(K, V) {
-    if (this.isVisible()) return;
     let B = K && K !== "星迹的CC✨" ? K : "";
     if (V) {
-      if (!(a0("taskCompletionNotification") ?? !0)) return;
-      let j = B ? `⚠️ Claude 任务失败：「${B}」` : "⚠️ Claude 任务执行失败";
-      (this.playTaskCompletionSound(), N6.window.showWarningMessage(j, "查看详情").then((H) => { if (H) this.makeVisible(); }));
+      this.playTaskCompletionSound("error");
+      if (!this.isVisible() && (a0("taskCompletionNotification") ?? !0)) {
+        let j = B ? `⚠️ Claude 任务失败：「${B}」` : "⚠️ Claude 任务执行失败";
+        N6.window.showWarningMessage(j, "查看详情").then((H) => { if (H) this.makeVisible(); });
+      }
     } else {
-      if (!(a0("taskCompletionNotification") ?? !0)) return;
-      let j = B ? `✅ Claude 任务完成：「${B}」` : "✅ Claude 任务已完成";
-      (this.playTaskCompletionSound(), N6.window.showInformationMessage(j, "查看详情").then((H) => { if (H) this.makeVisible(); }));
+      this.playTaskCompletionSound("completion");
+      try { require("fs").appendFileSync("C:/Users/lenovo/.claude/audio_debug.log", "COMPLETION_SOUND_CALLED " + new Date().toISOString() + "\n"); } catch {}
+      if (!this.isVisible() && (a0("taskCompletionNotification") ?? !0)) {
+        let j = B ? `✅ Claude 任务完成：「${B}」` : "✅ Claude 任务已完成";
+        N6.window.showInformationMessage(j, "查看详情").then((H) => { if (H) this.makeVisible(); });
+      }
     }
   }
   async notifyOpenPluginsDialog(K, V) {
@@ -71946,11 +72251,14 @@ class N5 extends JE {
       );
     else if (K.request.type === "rename_tab") {
       let B = !!K.request.hasUnseenCompletion,
-        j2 = !!K.request.hasError;
-      if (B && !this.lastHasUnseenCompletion) this.notifyTaskCompletion(K.request.title, j2);
-      else if (!B && j2 && !this.lastHasError) this.notifyTaskCompletion(K.request.title, !0);
+        j2 = !!K.request.hasError,
+        pendingPermissions = !!K.request.hasPendingPermissions;
+      if (j2 && !this.lastHasError) this.notifyTaskCompletion(K.request.title, !0);
+      else if (B && !this.lastHasUnseenCompletion) this.notifyTaskCompletion(K.request.title, j2);
+      else if (pendingPermissions && !this.lastHasPendingPermissions) this.notifyQuestion();
       this.lastHasUnseenCompletion = B;
       this.lastHasError = j2;
+      this.lastHasPendingPermissions = pendingPermissions;
       if (this.panelTab) {
         this.panelTab.title = K.request.title;
         let j;
@@ -71960,11 +72268,17 @@ class N5 extends JE {
         this.panelTab.iconPath = N6.Uri.file(Y0.join(this.context.extensionPath, "resources", j));
       }
       return { type: "rename_tab_response" };
-    } else if (K.request.type === "update_session_state")
+    } else if (K.request.type === "update_session_state") {
+      if (K.request.state === "running") {
+        this.lastHasUnseenCompletion = !1;
+        this.lastHasError = !1;
+        this.lastHasPendingPermissions = !1;
+      }
       return (
         this.onSessionStateChanged?.(K.request.sessionId, K.request.state, K.request.title),
         { type: "update_session_state_response" }
       );
+    }
     else if (K.request.type === "show_notification") {
       let { message: B, severity: j, buttons: H, onlyIfNotVisible: G } = K.request;
       if (G && this.isVisible()) return { type: "show_notification_response" };
@@ -72184,6 +72498,8 @@ class N5 extends JE {
   }
   planCommentsByChannel = new Map();
   planPreviewPanelByChannel = new Map();
+  channelPlanMode = new Set();
+  allowPlanMode = false;
   async openMarkdownPreview(K, V, B, j) {
     let H = this.planPreviewPanelByChannel.get(K);
     if (H) {
@@ -72237,7 +72553,24 @@ class N5 extends JE {
   async closePlanPreview(K) {
     let V = this.planPreviewPanelByChannel.get(K);
     if (V) (V.dispose(), this.planPreviewPanelByChannel.delete(K));
+    this.channelPlanMode.delete(K);
+    this.updateStatusBarText(K);
     return { type: "close_plan_preview_response" };
+  }
+  updateStatusBarText(K) {
+    if (!this.statusBarItem) { console.error("[YOLO-Plan] updateStatusBarText: NO statusBarItem!"); return; }
+    let V = !1,
+      B = !1;
+    for (let [j, H] of this.channels) {
+      if (H.permissionMode === "bypassPermissions") {
+        V = !0;
+        if (this.channelPlanMode.has(j)) B = !0;
+      }
+    }
+    console.error("[YOLO-Plan] updateStatusBarText: hasYolo="+V+" hasPlan="+B+" text="+(V&&B?"YOLO-计划":V?"YOLO":"默认"));
+    if (V && B) this.statusBarItem.text = "✻ YOLO 模式 - 计划";
+    else if (V) this.statusBarItem.text = "✻ YOLO 模式";
+    else this.statusBarItem.text = "✻ 星迹的CC✨";
   }
   async openDiff(K, V, B, j, H) {
     return {
@@ -72952,6 +73285,7 @@ class hQ {
   activeSessionId;
   sessionListView;
   authManager;
+  recentlyClosedSessions = [];
   constructor(K, V, B, j, H, G, N, x, U, Z, q) {
     this.extensionUri = K;
     this.context = V;
@@ -72965,6 +73299,39 @@ class hQ {
     this.selectionChangedEvents = Z;
     this.getSelection = q;
     this.authManager = new s7(_7(B), YB(), a0("disableLoginPrompt"));
+    this.disposables.push(
+      S4.window.tabGroups.onDidChangeTabs((D) => {
+        if (
+          D.closed.some(
+            (L) =>
+              !(L.input instanceof S4.TabInputWebview && L.input.viewType.includes("claudeVSCodePanel")),
+          )
+        )
+          S4.commands.executeCommand("setContext", "claude-vscode.lastClosedWasSession", !1);
+      }),
+    );
+  }
+  reopenLastClosedSession() {
+    let K;
+    while (this.recentlyClosedSessions.length > 0) {
+      let V = this.recentlyClosedSessions.pop();
+      if (V && !this.sessionPanels.has(V.sessionId)) {
+        K = V;
+        break;
+      }
+    }
+    if ((this.updateLastClosedWasSessionContext(), !K)) return !1;
+    return this.createPanel(K.sessionId, void 0, K.viewColumn), !0;
+  }
+  pushRecentlyClosedSession(K, V) {
+    let B = this.recentlyClosedSessions.findIndex((j) => j.sessionId === K);
+    if (B !== -1) this.recentlyClosedSessions.splice(B, 1);
+    if ((this.recentlyClosedSessions.push({ sessionId: K, viewColumn: V }), this.recentlyClosedSessions.length > 10))
+      this.recentlyClosedSessions.shift();
+    this.updateLastClosedWasSessionContext();
+  }
+  updateLastClosedWasSessionContext() {
+    S4.commands.executeCommand("setContext", "claude-vscode.lastClosedWasSession", this.recentlyClosedSessions.length > 0);
   }
   hasVisibleWebview() {
     for (let K of this.webviews) if (K.isVisible()) return !0;
@@ -73054,6 +73421,12 @@ class hQ {
   }
   notifyToggleDictation() {
     for (let K of this.allComms) K.notifyToggleDictation();
+  }
+  notifyOptimizePrompt() {
+    let K = null;
+    for (let V of this.allComms) if (V.isVisible()) { K = V; break; }
+    if (!K) K = this.allComms.values().next().value;
+    if (K) K.notifyOptimizePrompt();
   }
   async notifyOpenPluginsDialog(K, V) {
     while (this.allComms.size === 0) await new Promise((B) => setTimeout(B, 100));
@@ -73189,6 +73562,7 @@ class hQ {
         if ((this.sessionPanels.set(Z, K), K.active)) this.activeSessionId = Z;
       },
     );
+    let $vc = j ? S4.ViewColumn.Active : K.viewColumn;
     (this.allComms.add(U),
       K.webview.onDidReceiveMessage(
         (Z) => {
@@ -73199,6 +73573,7 @@ class hQ {
       ),
       K.onDidChangeViewState(
         () => {
+          if (!j && K.viewColumn !== void 0) $vc = K.viewColumn;
           if ((U.notifyVisibilityChange(K.visible), K.active)) this.setActivePanel(K);
         },
         null,
@@ -73211,6 +73586,7 @@ class hQ {
             if (q === K) {
               if ((this.sessionPanels.delete(Z), this.sessionStates.delete(Z), this.activeSessionId === Z))
                 this.activeSessionId = void 0;
+              this.pushRecentlyClosedSession(Z, $vc);
             }
           this.broadcastSessionStates();
         },
@@ -73279,6 +73655,7 @@ class hQ {
       L = `style-src ${K.cspSource} 'unsafe-inline'`,
       W = `font-src ${K.cspSource}`,
       O = `img-src ${K.cspSource} data:`,
+      X = `media-src data:`,
       A = `worker-src ${K.cspSource}`,
       M = S4.workspace.getConfiguration("chat.editor"),
       F = M.get("fontFamily") || "default";
@@ -73299,7 +73676,7 @@ class hQ {
           and only allow scripts that have a specific nonce.
           Note: External https: URLs are blocked to prevent data exfiltration via markdown image URLs.
         -->
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${L}; ${W}; ${O}; script-src 'nonce-${q}'; ${A};">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${L}; ${W}; ${O}; ${X}; script-src 'nonce-${q}'; ${A};">
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${Z}" rel="stylesheet">
@@ -73317,9 +73694,22 @@ class hQ {
         <pre id="claude-error"></pre>
         <div id="root"${B ? ` data-initial-prompt="${XQ(B)}"` : ""}${V ? ` data-initial-session="${XQ(V)}"` : ""}${D ? ` data-initial-auth-status="${XQ(JSON.stringify(D))}"` : ""}></div>
         <script nonce="${q}">
+          globalThis._VSCODE_FILE_ROOT = '${x.toString().replace(/\\/g, '/').replace(/\/[^\/?#]*[?#].*$/, '/').replace(/\/[^\/]*$/, '/').replace(/'/g, "\\'")}';
           window.IS_SIDEBAR = ${j ? "true" : "false"}
           window.IS_FULL_EDITOR = ${H ? "true" : "false"}
           window.IS_SESSION_LIST_ONLY = ${G ? "true" : "false"}
+          (function(){
+            try {
+              var AC = window.AudioContext || window.webkitAudioContext;
+              if (!AC) return;
+              var ctx = new AC();
+              ctx.resume();
+              ctx.addEventListener('statechange', function(){
+                if (ctx.state === 'suspended') ctx.resume();
+              });
+              window.__audioContext = ctx;
+            } catch(e) {}
+          })();
         </script>
         <script nonce="${q}" src="${x}" type="module"></script>
       </body>
@@ -75586,15 +75976,25 @@ function kc6(K) {
         q.notifyCreateNewConversation();
       }),
     ));
-  let A = M6.window.createStatusBarItem(M6.StatusBarAlignment.Right);
+  K.subscriptions.push(
+    M6.commands.registerCommand("claude-vscode.optimizePrompt", async () => {
+      q.notifyOptimizePrompt();
+    }),
+  );
+  K.subscriptions.push(
+    M6.commands.registerCommand("claude-vscode.reopenClosedSession", async () => {
+      if (!q.reopenLastClosedSession()) await M6.commands.executeCommand("workbench.action.reopenClosedEditor");
+    }),
+  );
+  this.statusBarItem = M6.window.createStatusBarItem(M6.StatusBarAlignment.Right);
   if (
-    ((A.text = "✻ 星迹的CC✨"),
-    (A.command = "claude-vscode.editor.openLast"),
-    (A.tooltip = "打开 星迹的CC✨"),
-    K.subscriptions.push(A),
+    ((this.statusBarItem.text = "✻ YOLO 模式"),
+    (this.statusBarItem.command = "claude-vscode.editor.openLast"),
+    (this.statusBarItem.tooltip = "打开 星迹的CC✨"),
+    K.subscriptions.push(this.statusBarItem),
     B.getPreferredLocation() === "sidebar" && O)
   )
-    A.show();
+    this.statusBarItem.show();
   if (
     (K.subscriptions.push(
       M6.commands.registerCommand("claude-vscode.sidebar.open", async () => {
@@ -75605,14 +76005,14 @@ function kc6(K) {
             await M6.commands.executeCommand("claudeVSCodeSidebar.focus"));
           return;
         }
-        (await M6.commands.executeCommand("claudeVSCodeSidebarSecondary.focus"), A.show());
+        (await M6.commands.executeCommand("claudeVSCodeSidebarSecondary.focus"), this.statusBarItem.show());
       }),
     ),
     K.subscriptions.push(
       M6.commands.registerCommand("claude-vscode.window.open", async () => {
         (q.createPanel(void 0, void 0),
           await M6.commands.executeCommand("workbench.action.moveEditorToNewWindow"),
-          A.hide());
+          this.statusBarItem.hide());
       }),
     ),
     K.subscriptions.push(
