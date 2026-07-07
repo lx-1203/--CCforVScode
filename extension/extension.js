@@ -55181,11 +55181,28 @@ class JE {
       this.logger.warn(`Channel not found: ${K}`);
       return;
     }
-    try {
-      (await V.query.interrupt(), this.logger.log(`Interrupted Claude for requestId: ${K}`));
-    } catch (B) {
-      this.logger.error(`Failed to interrupt Claude: ${B}`);
+    if (V._interrupting) {
+      this.logger.log(`Interrupt already in progress for channel: ${K}`);
+      return;
     }
+    V._interrupting = !0;
+    let B = 3, j = 2000;
+    for (let H = 0; H < B; H++) {
+      try {
+        let x = new Promise((U, Z) => setTimeout(() => Z(new Error("Interrupt timeout")), j));
+        await Promise.race([V.query.interrupt(), x]);
+        this.logger.log(`Interrupted Claude for channel: ${K} (attempt ${H + 1})`);
+        this.send({ type: "interrupt_result", channelId: K, success: !0 });
+        V._interrupting = !1;
+        return;
+      } catch (U) {
+        this.logger.warn(`Interrupt attempt ${H + 1}/${B} failed for channel ${K}: ${U}`);
+        if (H < B - 1) await new Promise(U => setTimeout(U, 500));
+      }
+    }
+    this.logger.error(`All ${B} interrupt attempts failed for channel: ${K}`);
+    this.send({ type: "interrupt_result", channelId: K, success: !1 });
+    V._interrupting = !1;
   }
   logEvent(K, V, B = {}) {
     let j = this.channels.get(K);
@@ -55756,8 +55773,10 @@ class JE {
         return this.setAskUserQuestion(K.channelId, K.request.enabled);
       case "set_audio_feedback":
         return this.setAudioFeedback(K.channelId, K.request.enabled);
+      case "tool_translate_ai":
+        return this.toolTranslateAI(K.request.tools, V);
       case "optimize_prompt":
-        return this.optimizePrompt(K.request.text, K.request.cwd, K.request.selection, K.request.activeFile, V);
+        return this.optimizePrompt(K.request.text, K.request.cwd, K.request.selection, K.request.activeFile, V, K.channelId, K.request.sessionId, K.request.conversationContext);
       case "apply_settings":
         return this.applySettings(K.channelId, K.request.settings);
       case "save_custom_config": {
@@ -56156,8 +56175,9 @@ class JE {
     this.pushStateUpdate();
     return { type: "set_audio_feedback_response" };
   }
-  async optimizePrompt(K, V, B, j, signal) {
+  async optimizePrompt(K, V, B, j, signal, channelId, sessionId, conversationContext) {
     let H0 = Date.now();
+    this.output.info(`[OPTIMIZE] channelId=${channelId}, sessionId=${sessionId}, ctxLen=${(conversationContext||"").length}, text=${(K||"").substring(0,50)}`);
     try {
       // 收集项目上下文
       let G0 = "";
@@ -56192,37 +56212,156 @@ class JE {
         let Z0 = B.length > 2000 ? B.substring(0, 2000) + "\n...(已截断)" : B;
         G0 += "选中代码:\n```\n" + Z0 + "\n```\n";
       }
-      // 构建高质量优化提示词
-      let systemPrompt = `你是世界顶级的提示词工程师。你的任务是将用户输入的原始提示词优化为更高效、更专业、更能引导 AI 产生准确结果的版本。
 
-## 优化原则（按优先级排序）
-1. **具体化**：将模糊描述替换为具体、可操作的要求。例如"改一下这个函数"→"将 getUserData 函数中的 try-catch 块提取到单独的 errorHandler 工具函数"
-2. **结构化**：复杂任务用编号列表或分段组织，确保逻辑清晰
-3. **上下文完整**：确保提示词自包含——包含文件路径、函数名、期望行为、边界条件
-4. **指定输出格式**：明确说明期望的输出形式（代码、解释、修改方案等）
-5. **约束明确**：指明不应修改的部分、需要保持的风格、性能要求等
-6. **保持原语言**：输出语言与输入一致，不翻译
-7. **保留技术术语**：保留所有代码相关的精确术语（函数名、变量名、API名等）
+      // onElicitation 回调：让优化器可以向用户提问（ask_user_question 会触发此回调）
+      const onElicitation = async (elicitation) => {
+        try {
+          const message = elicitation.message || "需要更多信息以优化提示词";
+          const schema = elicitation.requestedSchema;
+          if (schema && schema.properties) {
+            const props = Object.entries(schema.properties);
+            if (props.length === 1) {
+              const [key, prop] = props[0];
+              if (prop.enum && Array.isArray(prop.enum)) {
+                let items = prop.enum.map(v => ({ label: String(v), description: prop.description || "" }));
+                const selected = await N6.window.showQuickPick(items, { placeHolder: message, title: "优化器提问" });
+                if (!selected) return { action: "decline" };
+                return { action: "accept", content: { [key]: selected.label } };
+              }
+              const answer = await N6.window.showInputBox({ prompt: message, title: "优化器提问", placeHolder: prop.description || "" });
+              if (answer === undefined) return { action: "decline" };
+              return { action: "accept", content: { [key]: answer } };
+            }
+            let answers = {};
+            for (const [key, prop] of props) {
+              if (prop.enum && Array.isArray(prop.enum)) {
+                let items = prop.enum.map(v => ({ label: String(v), description: prop.description || "" }));
+                const selected = await N6.window.showQuickPick(items, { placeHolder: prop.description || message, title: "优化器提问 (" + key + ")" });
+                if (!selected) return { action: "decline" };
+                answers[key] = selected.label;
+              } else {
+                const answer = await N6.window.showInputBox({ prompt: prop.description || message, title: "优化器提问 (" + key + ")" });
+                if (answer === undefined) return { action: "decline" };
+                answers[key] = answer;
+              }
+            }
+            return { action: "accept", content: answers };
+          }
+          const answer = await N6.window.showInputBox({ prompt: message, title: "优化器提问" });
+          if (answer === undefined) return { action: "decline" };
+          return { action: "accept", content: { answer } };
+        } catch (e) {
+          return { action: "decline" };
+        }
+      };
 
-## 项目上下文（用于理解领域但不要在输出中重复）
-${G0 || "无特定项目上下文"}
+      // 构建优化提示词
+      let promptText;
+      let jsonFmt = '{"optimized": "优化后的文本"}';
+      if (sessionId) {
+        promptText = `请根据以上对话上下文，优化以下提示词。
 
-## 输出要求
-- 只输出优化后的提示词文本，不要任何解释、开场白、结尾语
-- 不要使用 Markdown 格式（不要加粗、代码块、标题等）
-- 如果原始提示词已经很优秀，可以保持原样
-- 优化后的文本长度应与原文本相近或略长（因为增加了具体性）
+## 优化原则
+1. 具体化：将模糊描述替换为具体、可操作的要求
+2. 结构化：复杂任务用编号列表或分段组织，确保逻辑清晰
+3. 上下文完整：确保提示词自包含——包含文件路径、函数名、期望行为，参考对话上下文中的信息
+4. 指定输出格式：明确说明期望的输出形式
+5. 约束明确：指明不应修改的部分、需要保持的风格等
+6. 保持原语言：输出语言与输入一致，不翻译
+7. 保留技术术语：保留所有代码相关的精确术语
+
+${G0 ? "## 项目上下文（补充信息）\n" + G0 : ""}
+
+## 输出格式（严格遵守）
+必须只输出一个 JSON 对象，不要任何解释、开场白、结尾语，不要用 Markdown 代码块包裹。格式例如：
+${jsonFmt}
+其中 "optimized" 字段的值就是优化后的完整提示词。
+
+## 其他规则
+- 可以使用只读工具（Read/Glob/Grep）查看项目代码以理解上下文，但不要编辑或执行任何文件
+- 当关键信息缺失时，请用 AskUserQuestion 工具向用户提问获取澄清
+- 信息充足时直接输出 JSON 结果
 
 ## 待优化文本：
 ${K || ""}`;
+      } else {
+        promptText = `你是世界顶级的提示词工程师。你的任务是将用户输入的原始提示词优化为更高效、更专业、更能引导 AI 产生准确结果的版本。
+
+## 优化原则
+1. 具体化：将模糊描述替换为具体、可操作的要求
+2. 结构化：复杂任务用编号列表或分段组织
+3. 上下文完整：确保提示词自包含——包含文件路径、函数名、期望行为、边界条件
+4. 指定输出格式：明确说明期望的输出形式
+5. 约束明确：指明不应修改的部分、需要保持的风格等
+6. 保持原语言：输出语言与输入一致，不翻译
+7. 保留技术术语
+
+## 项目上下文
+${G0 || "无特定项目上下文"}
+
+## 输出格式（严格遵守）
+必须只输出一个 JSON 对象，不要任何解释、开场白、结尾语，不要用 Markdown 代码块包裹。格式例如：
+${jsonFmt}
+其中 "optimized" 字段的值就是优化后的完整提示词。
+
+## 其他规则
+- 可以使用只读工具（Read/Glob/Grep）查看项目代码以理解上下文，但不要编辑或执行任何文件
+- 当关键信息缺失时，请用 AskUserQuestion 工具向用户提问获取澄清
+- 信息充足时直接输出 JSON 结果
+
+## 待优化文本：
+${K || ""}`;
+      }
 
       let T0 = new v2();
       T0.enqueue({
         type: "user",
-        message: { role: "user", content: [{ type: "text", text: systemPrompt }] },
+        message: { role: "user", content: [{ type: "text", text: promptText }] },
       });
       T0.done();
-      let N = await this.spawnClaude(T0, void 0, async () => ({ behavior: "deny", message: "优化专用" }), void 0, this.cwd, "default", !1, 0, void 0),
+      let N = await this.spawnClaude(
+        T0,
+        void 0,
+        async (toolName, input) => {
+          if (toolName === "AskUserQuestion") {/* 输入格式: { questions: [{ question, header, options, multiSelect }] } */
+            try {
+              let qs = input?.questions;
+              if (Array.isArray(qs) && qs.length > 0) {
+                let answers = {};
+                for (let q of qs) {
+                  let t = q.header || q.question || "优化器提问", o = q.options;
+                  if (Array.isArray(o) && o.length > 0) {
+                    let it = o.map(v => ({ label: typeof v === "string" ? v : (v.label || v.text || String(v)), description: typeof v === "object" ? (v.description || "") : "" }));
+                    let sl = await N6.window.showQuickPick(it, { placeHolder: q.question || t, title: t });
+                    if (!sl) return { behavior: "deny", message: "用户取消了提问" };
+                    answers[q.question || t] = sl.label;
+                  } else {
+                    let an = await N6.window.showInputBox({ prompt: q.question || "", title: t, placeHolder: q.description || "" });
+                    if (an === undefined) return { behavior: "deny", message: "用户取消了提问" };
+                    answers[q.question || t] = an;
+                  }
+                }
+                return { behavior: "allow", updatedInput: { ...input, answers } };
+              }
+              let qs2 = input?.question || input?.message || "需要更多信息以优化提示词";
+              let an2 = await N6.window.showInputBox({ prompt: qs2, title: "优化器提问" });
+              if (an2 === undefined) return { behavior: "deny", message: "用户取消了提问" };
+              return { behavior: "allow", updatedInput: { ...input, answers: { [qs2]: an2 } } };
+            } catch (e) { return { behavior: "deny", message: "提问处理失败" }; }
+          }
+          let readOnlyTools = ["Read","Glob","Grep","LS","NotebookRead","TodoRead","WebFetch","WebSearch"];
+          if (readOnlyTools.includes(toolName)) return { behavior: "allow", updatedInput: input };
+          return { behavior: "deny", message: "优化模式：只能读取文件，不能编辑或执行。请据此输出 JSON 结果" };
+        },
+        void 0,
+        this.cwd,
+        "default",
+        !1,
+        0,
+        void 0,
+        !1,
+        onElicitation
+      ),
         W0 = "";
       try {
         for await (let _ of N) {
@@ -56231,22 +56370,24 @@ ${K || ""}`;
             W0 += _.event.delta.text;
           if (_.type === "result") {
             let G = W0.trim();
-            // 检测执行错误（权限拒绝、超时、API 错误、达到最大轮次等）
             if (_.is_error && !G) {
               let errMsg = Array.isArray(_.errors) && _.errors.length ? _.errors.join("; ") : (_.result || _.subtype || "优化执行出错");
               return { type: "optimize_prompt_response", text: K, error: errMsg, elapsed: Date.now() - H0 };
             }
-            // 无任何输出：视为失败而非"与原文相同"
             if (!G) return { type: "optimize_prompt_response", text: K, error: "未获取到优化结果", elapsed: Date.now() - H0 };
-            // 输出与原文完全一致：合法的"无需优化"，非错误
-            if (G === K) return { type: "optimize_prompt_response", text: K, elapsed: Date.now() - H0 };
-            // 清理 Markdown 格式
-            G = G.replace(/```[\s\S]*?```/g, "").replace(/`([^`]+)`/g, "$1");
-            G = G.replace(/^#{1,6}\s+/gm, "").replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1");
-            G = G.replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "");
-            G = G.replace(/^>\s+/gm, "").replace(/~~([^~]+)~~/g, "$1");
-            G = G.replace(/\n{3,}/g, "\n\n").trim();
-            return { type: "optimize_prompt_response", text: G || K, elapsed: Date.now() - H0 };
+            // 优先 JSON 解析，失败则 Markdown 清理
+            let parsed = this.parseOptimizeJSON(G);
+            let out = parsed != null ? parsed : G;
+            if (!out.trim()) return { type: "optimize_prompt_response", text: K, error: "未获取到优化结果", elapsed: Date.now() - H0 };
+            if (out.trim() === K.trim()) return { type: "optimize_prompt_response", text: K, elapsed: Date.now() - H0 };
+            if (parsed == null) {
+              out = out.replace(/```[\s\S]*?```/g, "").replace(/`([^`]+)`/g, "$1");
+              out = out.replace(/^#{1,6}\s+/gm, "").replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1");
+              out = out.replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "");
+              out = out.replace(/^>\s+/gm, "").replace(/~~([^~]+)~~/g, "$1");
+              out = out.replace(/\n{3,}/g, "\n\n").trim();
+            }
+            return { type: "optimize_prompt_response", text: out.trim() || K, elapsed: Date.now() - H0 };
           }
         }
       } catch (_) {
@@ -56257,6 +56398,124 @@ ${K || ""}`;
       return { type: "optimize_prompt_response", text: K, error: Q0.message || String(Q0), elapsed: Date.now() - H0 };
     }
   }
+  parseOptimizeJSON(raw) {
+    if (!raw) return null;
+    let s = raw.trim();
+    let tryParse = (str) => {
+      try {
+        let o = JSON.parse(str);
+        if (o && typeof o === "object" && typeof o.optimized === "string") return o.optimized;
+      } catch {}
+      return null;
+    };
+    // 1) 先直接解析整体：合法 JSON 即便其字符串值内部含 ``` 代码块也能正确解析
+    let r = tryParse(s);
+    if (r != null) return r;
+    // 2) 仅当整段被代码块包裹时才剥离外层围栏（避免误吞值内部的 ``` 代码块）
+    if (s.startsWith("```")) {
+      let fence = s.match(/^```(?:json)?\s*([\s\S]*?)```\s*$/i);
+      if (fence && fence[1]) {
+        r = tryParse(fence[1].trim());
+        if (r != null) return r;
+        s = fence[1].trim();
+      }
+    }
+    // 3) 截取首个 { 到最后一个 } 之间的子串再解析
+    let a = s.indexOf("{"), b = s.lastIndexOf("}");
+    if (a >= 0 && b > a) {
+      r = tryParse(s.slice(a, b + 1));
+      if (r != null) return r;
+    }
+    // 4) 容错提取：模型常犯错误——值内含未转义的换行/制表符或内部双引号。
+    //    定位 "optimized" 键 → 冒号后的首个 " → 最后一个 } 前的最后一个 "，取中间内容并反转义。
+    let key = s.search(/"optimized"\s*:/);
+    if (key >= 0) {
+      let colon = s.indexOf(":", key);
+      let open = s.indexOf('"', colon + 1);
+      let endBrace = s.lastIndexOf("}");
+      let close = (endBrace > open ? s.lastIndexOf('"', endBrace) : s.lastIndexOf('"'));
+      if (open >= 0 && close > open) {
+        let body = s.slice(open + 1, close);
+        try { return JSON.parse('"' + body.replace(/\r?\n/g, "\\n").replace(/\t/g, "\\t") + '"'); }
+        catch {
+          return body
+            .replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+            .replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+        }
+      }
+    }
+    return null;
+  }
+  async toolTranslateAI(K, V) {
+    if (!K || !Array.isArray(K) || K.length === 0)
+      return { type: "tool_translate_ai_response", translations: {} };
+    var H0 = Date.now();
+    try {
+      var lines = [];
+      lines.push("你是软件工具本地化专家,将以下工具名翻译成2-8字简洁中文.");
+      lines.push("");
+      lines.push("命名规则参考:");
+      lines.push("TaskCreate→创建任务, CronDelete→删除定时任务");
+      lines.push("EnterPlanMode→进入计划模式, ExitWorktree→退出工作树");
+      lines.push("WebFetch→网页抓取, BashOutput→终端输出");
+      lines.push("");
+      lines.push("待翻译工具名:");
+      lines = lines.concat(K.map(function(t,i){ return (i+1)+". "+t; }));
+      lines.push("");
+      lines.push('请只输出JSON: {"ToolName":"中文",...} 不要任何解释');
+      var sp = lines.join("\n");
+
+      var T0 = new v2();
+      T0.enqueue({ type: "user", message: { role: "user", content: [{ type: "text", text: sp }] } });
+      T0.done();
+      var N = await this.spawnClaude(T0, void 0, async () => ({ behavior: "deny", message: "" }), void 0, this.cwd, "haiku", !1, 0, void 0);
+      var W0 = "";
+      try {
+        for await (var _ of N) {
+          if (V?.aborted) throw new Error("Aborted");
+          if (_.type === "stream_event" && _.event?.type === "content_block_delta")
+            W0 += _.event.delta?.text || "";
+          if (_.type === "result") {
+            var m = W0.match(/\{[\s\S]*\}/);
+            var trans = {};
+            if (m) try { trans = JSON.parse(m[0]); } catch(e) {}
+            if (Object.keys(trans).length > 0) await this._backfillTranslations(trans);
+            return { type: "tool_translate_ai_response", translations: trans, elapsed: Date.now() - H0 };
+          }
+        }
+      } catch(e) {
+        return { type: "tool_translate_ai_response", translations: {}, error: e.message, elapsed: Date.now() - H0 };
+      }
+      return { type: "tool_translate_ai_response", translations: {}, elapsed: Date.now() - H0 };
+    } catch(Q0) {
+      return { type: "tool_translate_ai_response", translations: {}, error: Q0.message, elapsed: Date.now() - H0 };
+    }
+  }
+
+  async _backfillTranslations(K) {
+    try {
+      var B = require("fs");
+      var jp = S4.Uri.joinPath(this.extensionUri, "webview", "index.js").fsPath;
+      var H = B.readFileSync(jp, "utf-8");
+      var changed = false;
+      for (var eng in K) {
+        if (!K.hasOwnProperty(eng)) continue;
+        if (H.indexOf('"' + eng + '":') >= 0) continue;
+        var ds = H.indexOf("var _toolNameZh = {");
+        var de = H.indexOf("};", ds);
+        if (de < 0) continue;
+        H = H.slice(0, de) + ',"' + eng + '":"' + K[eng] + '"' + H.slice(de);
+        changed = true;
+      }
+      if (changed) {
+        B.writeFileSync(jp, H, "utf-8");
+        this.logger.log("[TR-AI] 已回填翻译: " + JSON.stringify(K));
+      }
+    } catch(e) {
+      this.logger.warn("[TR-AI] 回填失败: " + (e.message || ""));
+    }
+  }
+
   async loadUserSettings() {
     let K = l8(),
       V = oD.join(K, "settings.json"),
@@ -72300,7 +72559,7 @@ class N5 extends JE {
     }
     return super.processRequest(K, V);
   }
-  async spawnClaude(K, V, B, j, H, G, N, x, U = {}) {
+  async spawnClaude(K, V, B, j, H, G, N, x, U = {}, forkSession = false, onElicitation = void 0) {
     Lc6();
     let Z = new rC(_7(this.output)),
       q = (N6.workspace.workspaceFolders || []).map((I) => I.uri.fsPath);
@@ -72346,7 +72605,9 @@ class N5 extends JE {
           "no-chrome": null,
           "replay-user-messages": null,
         },
+        forkSession: forkSession,
         mcpServers: U,
+        onElicitation: onElicitation,
       },
       { pathToClaudeCodeExecutable: L, executableArgs: W, env: O, nodePath: A } = this.getClaudeBinary(),
       M = a0("usePythonEnvironment") ?? !0,
@@ -75869,6 +76130,7 @@ var yc6 = b(AE(), 1),
 var I36 = !1;
 function kc6(K) {
   I36 = !0;
+  try { globalThis._xingjiExtContext = K; } catch(e) {}
   let V = M6.window.createOutputChannel("Claude VSCode", { log: !0 });
   (K.subscriptions.push(V), M6.commands.executeCommand("setContext", "claude-vscode.updateSupported", !1));
   let B = new sC(K);
@@ -76169,3 +76431,435 @@ function mc6() {
 function cc6() {
   return M6.window.tabGroups.all.flatMap((K) => K.tabs);
 }
+
+// ═══ 星迹的CC 多引擎语音合成 (移植自 AI Voice Studio) ═══
+globalThis._xingjiTTSState = globalThis._xingjiTTSState || { enabled: false };
+globalThis._xingjiActiveComms = globalThis._xingjiActiveComms || new Set();
+
+var XJ_TTSError = (function(){
+  function E(msg, code){ Error.call(this, msg); this.message = msg; this.code = code; this.name = 'TTSApiError'; }
+  E.prototype = Object.create(Error.prototype);
+  return E;
+})();
+
+function xjCfg(){ return M6.workspace.getConfiguration('claudeCode'); }
+function xjGetProvider(){ return xjCfg().get('voice.provider', 'edge'); }
+
+var XJ_EdgeTTS = (function(){
+  var TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+  var WSS = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+  function gid(){ return 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g,function(){return Math.floor(Math.random()*16).toString(16);}); }
+  function esc(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  return function synthesizeEdge(args){
+    var voice = args.voice || 'zh-CN-XiaoxiaoNeural';
+    var rate = args.rate || '+10%';
+    return new Promise(function(ok, fail){
+      var text = (args.text||'').trim();
+      if(!text) return fail(new XJ_TTSError('Empty', -1));
+      var cid=gid(), rid=gid(), chunks=[], done=false;
+      var ws, timer=setTimeout(function(){ if(!done){done=true; try{ws.close();}catch(e){} fail(new XJ_TTSError('Timeout',-2)); } }, 30000);
+      try { ws = new P3(WSS + '?TrustedClientToken=' + TOKEN + '&ConnectionId=' + cid, { headers: { 'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Origin':'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold' }, perMessageDeflate: false }); }
+      catch(e){ if(!done){done=true; clearTimeout(timer); fail(e);} return; }
+      ws.on('open', function(){
+        ws.send('Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n' + JSON.stringify({ context:{ synthesis:{ audio:{ metadataoptions:{sentenceBoundaryEnabled:'false',wordBoundaryEnabled:'false'}, outputFormat:'audio-24khz-48kbitrate-mono-mp3' }}}}));
+        ws.send('X-RequestId:' + rid + '\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:' + new Date().toISOString() + '\r\nPath:ssml\r\n\r\n<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN"><voice name="' + voice + '"><prosody rate="' + rate + '">' + esc(text) + '</prosody></voice></speak>');
+      });
+      ws.on('message', function(d, bin){
+        if(bin){ var b=Buffer.from(d); if(b.length>2){ var hl=b.readUInt16LE(0); if(b.length>2+hl) chunks.push(b.slice(2+hl)); }}
+        else { var m=d.toString(); if(m.indexOf('Path:turn.end')>=0 && !done){ done=true; clearTimeout(timer); try{ws.close();}catch(e){} chunks.length>0 ? ok({ audioBase64: Buffer.concat(chunks).toString('base64'), format:'mp3' }) : fail(new XJ_TTSError('No audio',-4)); }}
+      });
+      ws.on('error', function(e){ if(!done){done=true; clearTimeout(timer); fail(new XJ_TTSError('Edge error: '+e.message,-6));} });
+      ws.on('close', function(){ if(!done){done=true; clearTimeout(timer); chunks.length>0 ? ok({ audioBase64: Buffer.concat(chunks).toString('base64'), format:'mp3' }) : fail(new XJ_TTSError('Closed',-6)); } });
+    });
+  };
+})();
+
+// ---- Gemini TTS ----
+function synthesizeGemini(args){
+  var text = (args.text||'').trim();
+  if(!text) return Promise.reject(new XJ_TTSError('Empty',-1));
+  if(!args.apiKey) return Promise.reject(new XJ_TTSError('Gemini API key missing',-1));
+  var base = (args.baseUrl||'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/,'');
+  var model = args.model || 'gemini-2.5-flash-preview-tts';
+  var url = base + '/models/' + encodeURIComponent(model) + ':generateContent';
+  var body = { contents:[{parts:[{text:text}]}], generationConfig:{ responseModalities:['AUDIO'], speechConfig:{ voiceConfig:{ prebuiltVoiceConfig:{ voiceName: args.voice||'Kore' }}}}};
+  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':args.apiKey}, body:JSON.stringify(body) })
+    .then(function(r){ return r.text().then(function(raw){ return {ok:r.ok, status:r.status, raw:raw}; }); })
+    .then(function(res){
+      var data; try{ data=JSON.parse(res.raw); }catch(e){ data={error:{message:res.raw}}; }
+      if(!res.ok) throw new XJ_TTSError((data.error&&data.error.message)||('HTTP '+res.status), res.status);
+      if(data.error) throw new XJ_TTSError(data.error.message||'Gemini failed', data.error.code||-6);
+      var part = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0];
+      var inline = part && (part.inlineData || part.inline_data);
+      var b64 = inline && inline.data;
+      if(!b64) throw new XJ_TTSError('No audio from Gemini',-4);
+      var mime = (inline.mimeType||inline.mime_type||'audio/L16;codec=pcm;rate=24000');
+      var m = mime.match(/rate=(\d+)/i); var sr = m ? Number(m[1]) : 24000;
+      return { audioBase64: xjWrapPcmWav(b64, sr, 1, 16), format:'wav' };
+    });
+}
+function xjWrapPcmWav(pcmB64, sr, ch, bits){
+  var pcm = Buffer.from(pcmB64.replace(/\s+/g,''), 'base64');
+  var byteRate = sr*ch*bits/8, blockAlign = ch*bits/8, dataSize = pcm.length;
+  var h = Buffer.alloc(44);
+  h.write('RIFF',0,4,'ascii'); h.writeUInt32LE(36+dataSize,4); h.write('WAVE',8,4,'ascii');
+  h.write('fmt ',12,4,'ascii'); h.writeUInt32LE(16,16); h.writeUInt16LE(1,20); h.writeUInt16LE(ch,22);
+  h.writeUInt32LE(sr,24); h.writeUInt32LE(byteRate,28); h.writeUInt16LE(blockAlign,32); h.writeUInt16LE(bits,34);
+  h.write('data',36,4,'ascii'); h.writeUInt32LE(dataSize,40);
+  return Buffer.concat([h,pcm]).toString('base64');
+}
+
+// ---- Qwen TTS (通义千问, 非实时) ----
+function synthesizeQwen(args){
+  var text=(args.text||'').trim();
+  if(!text) return Promise.reject(new XJ_TTSError('Empty',-1));
+  if(!args.apiKey) return Promise.reject(new XJ_TTSError('Qwen DashScope key missing',-1));
+  var endpoints={ china:'https://dashscope.aliyuncs.com/api/v1', international:'https://dashscope-intl.aliyuncs.com/api/v1' };
+  var base = endpoints[args.endpoint||'china'];
+  var url = base.replace(/\/+$/,'') + '/services/aigc/multimodal-generation/generation';
+  var input = { text:text, voice:args.voice||'Cherry', language_type:args.languageType||'Auto' };
+  var body = { model:args.model||'qwen3-tts-flash', input:input };
+  return fetch(url, { method:'POST', headers:{'Authorization':'Bearer '+args.apiKey,'Content-Type':'application/json'}, body:JSON.stringify(body) })
+    .then(function(r){ return r.text().then(function(raw){ return {ok:r.ok, status:r.status, raw:raw}; }); })
+    .then(function(res){
+      var data; try{ data=JSON.parse(res.raw); }catch(e){ data={error:{message:res.raw}}; }
+      if(!res.ok) throw new XJ_TTSError((data.error&&data.error.message)||('HTTP '+res.status), res.status);
+      if(data.code) throw new XJ_TTSError(data.message||'Qwen failed',-6);
+      var audio = data.output && data.output.audio;
+      if(audio && audio.data) return { audioBase64: audio.data.replace(/\s+/g,''), format:'wav' };
+      if(audio && audio.url) return fetch(audio.url).then(function(r){ return r.arrayBuffer(); }).then(function(ab){ return { audioBase64: Buffer.from(ab).toString('base64'), format:'wav' }; });
+      throw new XJ_TTSError('No audio from Qwen',-4);
+    });
+}
+
+// ---- MiMo TTS (小米) ----
+function synthesizeMiMo(args){
+  var text=(args.text||'').trim();
+  if(!text) return Promise.reject(new XJ_TTSError('Empty',-1));
+  if(!args.apiKey) return Promise.reject(new XJ_TTSError('MiMo key missing',-1));
+  var base=(args.baseUrl||'https://token-plan-cn.xiaomimimo.com/v1').replace(/\/+$/,'');
+  var url = base + '/chat/completions';
+  var body = { model:args.model||'mimo-v2.5-tts', messages:[{role:'user',content:text}], audio:{voice:args.voice||'Chloe',format:args.format||'wav'}, stream:false };
+  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json','api-key':args.apiKey}, body:JSON.stringify(body) })
+    .then(function(r){ return r.text().then(function(raw){ return {ok:r.ok, status:r.status, raw:raw}; }); })
+    .then(function(res){
+      var data; try{ data=JSON.parse(res.raw); }catch(e){ data={error:{message:res.raw}}; }
+      if(!res.ok) throw new XJ_TTSError((data.error&&data.error.message)||('HTTP '+res.status), res.status);
+      if(data.error) throw new XJ_TTSError(data.error.message||'MiMo failed',-6);
+      var ad = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.audio && data.choices[0].message.audio.data;
+      if(!ad) throw new XJ_TTSError('No audio from MiMo',-4);
+      return { audioBase64: ad.replace(/\s+/g,''), format:args.format||'wav' };
+    });
+}
+
+// ---- 统一分发 ----
+function xjSynthesize(args){
+  switch(args.provider){
+    case 'gemini': return synthesizeGemini(args);
+    case 'qwen': return synthesizeQwen(args);
+    case 'mimo': return synthesizeMiMo(args);
+    default: return XJ_EdgeTTS(args);
+  }
+}
+
+// ---- chunker ----
+function xjChunkText(text, maxChars, minChars){
+  maxChars = maxChars || 250; minChars = minChars || 40;
+  var trimmed = (text||'').trim();
+  if(!trimmed) return [];
+  if(trimmed.length <= maxChars) return [trimmed];
+  var SENT_END = /[。！？；…\.!?;]/, SOFT = /[，、,;；:：\s]/;
+  var paras = trimmed.split(/\n{2,}/).map(function(p){return p.replace(/\s*\n\s*/g,' ').trim();}).filter(Boolean);
+  var chunks = [];
+  function pushMerge(piece){
+    var n = piece.replace(/\s+/g,' ').trim(); if(!n) return;
+    var last = chunks[chunks.length-1];
+    if(last!==undefined && n.length<minChars && last.length+n.length<=maxChars){ chunks[chunks.length-1]=last+n; return; }
+    chunks.push(n);
+  }
+  for(var pi=0; pi<paras.length; pi++){
+    var para = paras[pi];
+    if(para.length <= maxChars){ pushMerge(para); continue; }
+    var sentences=[], cur='';
+    for(var ci=0; ci<para.length; ci++){ cur+=para[ci]; if(SENT_END.test(para[ci])){ sentences.push(cur); cur=''; } }
+    if(cur.trim()) sentences.push(cur);
+    var buf='';
+    for(var si=0; si<sentences.length; si++){
+      var s=sentences[si];
+      if(s.length>maxChars){
+        if(buf){ pushMerge(buf); buf=''; }
+        var b2='', lastSoft=-1;
+        for(var k=0;k<s.length;k++){ b2+=s[k]; if(SOFT.test(s[k])) lastSoft=b2.length; if(b2.length>=maxChars){ if(lastSoft>0&&lastSoft<b2.length){ pushMerge(b2.slice(0,lastSoft)); b2=b2.slice(lastSoft); lastSoft=-1; } else { pushMerge(b2); b2=''; lastSoft=-1; } } }
+        if(b2) pushMerge(b2);
+        continue;
+      }
+      if(!buf) buf=s; else if(buf.length+s.length<=maxChars) buf+=s; else { pushMerge(buf); buf=s; }
+    }
+    if(buf) pushMerge(buf);
+  }
+  return chunks;
+}
+
+// ---- playback session (lookahead) ----
+function xjRunPlayback(chunks, synthChunk, onChunk, signal, lookahead){
+  return new Promise(function(resolve){
+    if(chunks.length===0){ resolve({cancelled:false, emitted:0}); return; }
+    lookahead = Math.max(1, Math.min(lookahead||2, chunks.length));
+    var pending=[], nextPrime=0;
+    function prime(){ if(nextPrime>=chunks.length) return; if(signal.aborted) return; pending.push(synthChunk(chunks[nextPrime]).then(function(r){return {ok:true,result:r};}).catch(function(e){return {ok:false,error:e};})); nextPrime++; }
+    for(var i=0;i<lookahead;i++) prime();
+    var emitted=0;
+    (async function(){
+      for(var idx=0; idx<chunks.length; idx++){
+        if(signal.aborted){ resolve({cancelled:true, emitted:emitted}); return; }
+        var cur = pending.shift(); prime();
+        var settled = await cur;
+        if(!settled.ok){ if(signal.aborted){ resolve({cancelled:true,emitted:emitted}); return; } console.error('[XJ-TTS]', settled.error && settled.error.message); continue; }
+        if(signal.aborted){ resolve({cancelled:true, emitted:emitted}); return; }
+        onChunk({ index:idx, total:chunks.length, result:settled.result });
+        emitted++;
+      }
+      resolve({cancelled:false, emitted:emitted});
+    })();
+  });
+}
+
+// ---- API key ----
+var XJ_SECRET_KEYS = { mimo:'xingji.voice.mimo.apiKey', gemini:'xingji.voice.gemini.apiKey', qwen:'xingji.voice.qwen.apiKey' };
+var XJ_ENV_FALLBACK = { qwen:['DASHSCOPE_API_KEY'], gemini:['GEMINI_API_KEY','GOOGLE_API_KEY'], mimo:['MIMO_API_KEY'] };
+function xjGetApiKey(provider){
+  var ctx = globalThis._xingjiExtContext, p = provider;
+  return (async function(){
+    // 1. Try VS Code SecretStorage (set via command)
+    if(ctx && ctx.secrets){ var stored = await ctx.secrets.get(XJ_SECRET_KEYS[p]); if(stored && stored.trim()) return stored.trim(); }
+    // 2. Try VS Code config (set in settings UI)
+    var cfgKey = xjCfg().get('voice.'+p+'.apiKey', '');
+    if(cfgKey && cfgKey.trim()) return cfgKey.trim();
+    // 3. Try environment variable fallback
+    var envs = XJ_ENV_FALLBACK[p]||[];
+    for(var i=0;i<envs.length;i++){ var v=process.env[envs[i]]; if(v&&v.trim()) return v.trim(); }
+    return undefined;
+  })();
+}
+
+function xjSaveApiKey(provider, key){
+  var ctx = globalThis._xingjiExtContext;
+  if(ctx && ctx.secrets){ return ctx.secrets.store(XJ_SECRET_KEYS[provider], key); }
+  return Promise.reject(new Error('No SecretStorage'));
+}
+
+// ---- main speak ----
+var XJ_currentAbort = null;
+function xjSpeakText(text){
+  var cfg = xjCfg();
+  var provider = cfg.get('voice.provider', 'edge');
+  var maxChars = cfg.get('voice.chunkSize', 250);
+  if(XJ_currentAbort) try{ XJ_currentAbort.abort(); }catch(e){}
+  var abort = XJ_currentAbort = { aborted:false, abort:function(){this.aborted=true;} };
+  var chunks = xjChunkText(text, maxChars);
+  if(!chunks.length) return;
+  var comms = globalThis._xingjiActiveComms;
+  function bcast(req){ comms.forEach(function(n){ try{ n.send({type:'request',channelId:'',requestId:'',request:req}); }catch(e){} }); }
+  bcast({type:'tts_state', state:'generating'});
+  (async function(){
+    var apiKey;
+    if(provider!=='edge'){ apiKey = await xjGetApiKey(provider); if(!apiKey){ M6.window.showWarningMessage('语音引擎 '+provider+' 需要 API Key，请在设置中配置或运行命令设置'); bcast({type:'tts_complete'}); return; } }
+    var cfgRate = cfg.get('voice.ttsRate', 1.0);
+    var edgeRate = (cfgRate >= 1 ? '+' : '') + Math.round((cfgRate - 1) * 100) + '%';
+    var synth = function(chunk){ return xjSynthesize({ provider:provider, text:chunk, apiKey:apiKey, voice: cfg.get('voice.'+provider+'.voice'), model: cfg.get('voice.'+provider+'.model'), endpoint: cfg.get('voice.qwen.endpoint','china'), languageType: cfg.get('voice.qwen.languageType','Auto'), baseUrl: cfg.get('voice.'+provider+'.baseUrl'), rate: edgeRate }); };
+    await xjRunPlayback(chunks, synth, function(ev){
+      if(abort.aborted) return;
+      bcast({type:'tts_state', state:'playing'});
+      bcast({type:'tts_progress', index:ev.index, total:ev.total});
+      var mime = ev.result.format==='mp3' ? 'audio/mpeg' : (ev.result.format==='wav' ? 'audio/wav' : 'audio/mpeg');
+      var uri = 'data:'+mime+';base64,'+ev.result.audioBase64;
+      bcast({type:'play_audio', audioUri:uri});
+      if(globalThis._xingjiBridge) try{ globalThis._xingjiBridge.sendTTS(ev.result.audioBase64, '', ev.index===ev.total-1); }catch(e){}
+    }, abort, 2);
+    if(!abort.aborted) bcast({type:'tts_complete'});
+  })();
+}
+
+// ---- N5/hQ intercept ----
+(function(){
+  var origSetup = hQ.prototype.setupPanel;
+  hQ.prototype.setupPanel = function(){
+    origSetup.apply(this, arguments);
+    if(this.allComms) this.allComms.forEach(function(n){ globalThis._xingjiActiveComms.add(n); });
+  };
+  var origSend = N5.prototype.send;
+  N5.prototype.send = function(msg){
+    origSend.call(this, msg);
+    if(!msg || msg.type!=='io_message' || !msg.message || msg.message.type!=='assistant') return;
+    if(!msg.message.message || !Array.isArray(msg.message.message.content)) return;
+    if(!globalThis._xingjiTTSState || !globalThis._xingjiTTSState.enabled) return;
+    var text='';
+    for(var i=0;i<msg.message.message.content.length;i++){ var c=msg.message.message.content[i]; if(c.type==='text'&&c.text) text+=c.text+'\n'; }
+    text=text.trim();
+    if(text) try{ xjSpeakText(text); }catch(e){ console.error('[XJ-TTS]', e); }
+  };
+  var origProc = N5.prototype.processRequest;
+  N5.prototype.processRequest = async function(req, res){
+    if(req && req.request && req.request.type==='stop_tts'){
+      globalThis._xingjiTTSState.enabled = false;
+      if(XJ_currentAbort) try{ XJ_currentAbort.abort(); }catch(e){}
+      // Broadcast stop to all webviews so buttons stay in sync
+      var comms2 = globalThis._xingjiActiveComms;
+      if(comms2) comms2.forEach(function(n){ try{ n.send({type:'request',channelId:'',requestId:'',request:{type:'tts_toggle',enabled:false}}); }catch(e){} });
+      return { type:'stop_tts_response', success:true };
+    }
+    if(req && req.request && req.request.type==='toggle_tts'){
+      globalThis._xingjiTTSState.enabled = !globalThis._xingjiTTSState.enabled;
+      var en = globalThis._xingjiTTSState.enabled;
+      var comms3 = globalThis._xingjiActiveComms;
+      if(comms3) comms3.forEach(function(n){ try{ n.send({type:'request',channelId:'',requestId:'',request:{type:'tts_toggle',enabled:en}}); }catch(e){} });
+      return { type:'toggle_tts_response', success:true, enabled:en };
+    }
+    if(req && req.request && req.request.type==='open_voice_settings'){
+      try{ M6.commands.executeCommand('workbench.action.openSettings', 'claudeCode.voice'); }catch(e){}
+      return { type:'open_voice_settings_response', success:true };
+    }
+    if(req && req.request && req.request.type==='update_voice_config'){
+      try{ var uv = req.request; xjCfg().update(uv.key, uv.value, M6.ConfigurationTarget.Global); }catch(e){}
+      return { type:'update_voice_config_response', success:true };
+    }
+    if(req && req.request && req.request.type==='set_voice_api_key'){
+      try{ var sk = req.request; xjSaveApiKey(sk.provider, sk.key); }catch(e){}
+      return { type:'set_voice_api_key_response', success:true };
+    }
+    return origProc.call(this, req, res);
+  };
+})();
+
+// ---- commands ----
+setTimeout(function(){
+  try {
+    M6.commands.registerCommand('xingji.toggleTTS', function(){
+      globalThis._xingjiTTSState.enabled = !globalThis._xingjiTTSState.enabled;
+      var en = globalThis._xingjiTTSState.enabled;
+      var p = xjGetProvider();
+      M6.window.showInformationMessage(en ? ('语音朗读已开启 (引擎: '+p+')') : '语音朗读已关闭');
+      // Broadcast to all webviews so button updates
+      var comms = globalThis._xingjiActiveComms;
+      if(comms) comms.forEach(function(n){ try{ n.send({type:'request',channelId:'',requestId:'',request:{type:'tts_toggle',enabled:en}}); }catch(e){} });
+    });
+    M6.commands.registerCommand('xingji.stopTTS', function(){ globalThis._xingjiTTSState.enabled=false; if(XJ_currentAbort) try{XJ_currentAbort.abort();}catch(e){} });
+    M6.commands.registerCommand('xingji.setVoiceApiKey', async function(){
+      var pick = await M6.window.showQuickPick(['qwen','mimo','gemini'], { title:'选择语音引擎' });
+      if(!pick) return;
+      var key = await M6.window.showInputBox({ title: pick+' API Key', password:true, ignoreFocusOut:true });
+      if(!key||!key.trim()) return;
+      var ctx = globalThis._xingjiExtContext;
+      if(ctx && ctx.secrets){ await ctx.secrets.store(XJ_SECRET_KEYS[pick], key.trim()); M6.window.showInformationMessage(pick+' API Key 已保存'); }
+    });
+    console.log('[XJ-TTS] Commands registered');
+  } catch(e){ console.error('[XJ-TTS] cmd err', e); }
+}, 200);
+
+// ---- 浏览器语音 UI HTML ----
+var XJ_BRIDGE_HTML = [
+'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">',
+'<title>星迹语音</title><style>',
+'*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#1a1a2e;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}',
+'.c{text-align:center;max-width:500px;width:100%}h1{font-size:22px;color:#64ffda;margin-bottom:8px}.sub{color:#8892b0;margin-bottom:25px}',
+'.ci{display:flex;gap:6px;justify-content:center;margin-bottom:20px}.ci input{width:44px;height:52px;text-align:center;font-size:22px;font-weight:700;border:2px solid rgba(100,255,218,.3);border-radius:8px;background:rgba(255,255,255,.05);color:#64ffda;outline:0}',
+'.ci input:focus{border-color:#64ffda}.btn{padding:8px 20px;border:1px solid rgba(100,255,218,.3);border-radius:6px;background:0 0;color:#64ffda;cursor:pointer;font-size:13px;margin:5px}',
+'.btn:hover{background:rgba(100,255,218,.1)}.mic{width:100px;height:100px;border-radius:50%;border:none;background:linear-gradient(145deg,#e94560,#c73e54);color:#fff;cursor:pointer;margin:0 auto 15px;display:flex;align-items:center;justify-content:center}',
+'.mic.on{animation:p 1.5s infinite}@keyframes p{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}',
+'.st{font-size:14px;color:#ccd6f6;margin-bottom:10px;min-height:20px}.ma{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;min-height:60px;text-align:left;margin-top:12px;max-height:250px;overflow-y:auto}',
+'.m{margin-bottom:6px;padding:4px 8px;border-radius:5px;font-size:12px}.m.u{background:rgba(100,255,218,.1);color:#64ffda}.hide{display:none}</style></head><body><div class="c">',
+'<h1>星迹的CC 语音对话</h1><p class="sub">Voice Bridge</p>',
+'<div id="cp"><p style="margin-bottom:12px;color:#8892b0">输入 VS Code 显示的 6 位配对码</p>',
+'<div class="ci" id="ci"><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1"></div>',
+'<button class="btn" onclick="doConn()">连接</button><p id="ce" style="color:#ff6b6b;margin-top:8px"></p></div>',
+'<div id="vp" class="hide"><div class="st" id="st">就绪</div>',
+'<button class="mic" id="mb" onclick="tMic()"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>',
+'<div class="ma" id="ma"></div></div></div>',
+'<script>var tk=null,es=null,rec=false,sr=null,resText="";',
+'var ci=document.querySelectorAll(".ci input");ci.forEach(function(e,i){e.oninput=function(){if(this.value&&i<5)ci[i+1].focus()};e.onkeydown=function(ev){if(ev.key==="Backspace"&&!this.value&&i>0)ci[i-1].focus()}});',
+'function gc(){var c="";ci.forEach(function(e){c+=e.value});return c.toUpperCase()}',
+'function doConn(){var c=gc();if(c.length!==6)return;fetch("/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionCode:c})}).then(function(r){return r.json()}).then(function(d){if(d.success){tk=d.token;localStorage.setItem("vb_t",tk);localStorage.setItem("vb_c",c);sSSE();document.getElementById("cp").classList.add("hide");document.getElementById("vp").classList.remove("hide")}else document.getElementById("ce").textContent=d.error||"失败"}).catch(function(){document.getElementById("ce").textContent="连接错误"})}',
+'function sSSE(){es=new EventSource("/events?token="+tk);es.addEventListener("tts",function(e){var d=JSON.parse(e.data);pAud(d.audio,d.mimeType)});es.addEventListener("connected",function(){document.getElementById("st").textContent="已连接"})}',
+'function tMic(){if(rec)stopRec();else startRec()}',
+'function startRec(){try{var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert("浏览器不支持语音识别，请用 Chrome");return}sr=new SR();sr.lang="zh-CN";sr.interimResults=true;sr.continuous=true;resText="";',
+'sr.onresult=function(e){var t="";for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;resText=t;document.getElementById("st").textContent=t||"聆听中..."};',
+'sr.onerror=function(e){document.getElementById("st").textContent="错误: "+e.error};',
+'sr.onend=function(){if(rec){try{sr.start()}catch(e){}}else{if(resText.trim()){aMsg("u",resText.trim());fetch("/transcript",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:resText.trim()})}).catch(function(){})}document.getElementById("st").textContent="就绪";resText=""}};',
+'sr.start();rec=true;document.getElementById("mb").classList.add("on");document.getElementById("st").textContent="聆听中..."}catch(e){document.getElementById("st").textContent="不支持"}}',
+'function stopRec(){if(sr)try{sr.stop()}catch(e){}rec=false;document.getElementById("mb").classList.remove("on")}',
+'function pAud(b64,mt){try{var bin=atob(b64);var u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);var bl=new Blob([u8],{type:mt||"audio/mpeg"});var u=URL.createObjectURL(bl);var a=new Audio(u);a.play();a.onended=function(){URL.revokeObjectURL(u)}}catch(e){}}',
+'function aMsg(r,t){var a=document.getElementById("ma");var d=document.createElement("div");d.className="m "+r;d.textContent=t;a.appendChild(d);a.scrollTop=a.scrollHeight}',
+'var svt=localStorage.getItem("vb_t"),svc=localStorage.getItem("vb_c");if(svt&&svc){tk=svt;ci.forEach(function(e,i){e.value=svc[i]||""});sSSE();document.getElementById("cp").classList.add("hide");document.getElementById("vp").classList.remove("hide")}',
+'</script></body></html>'
+].join('\n');
+
+// ═══ 星迹的CC 浏览器语音桥接 (VoiceBridge) ═══
+var XingjiVoiceBridge = (function(){
+  var http = require('http');
+  var crypto = require('crypto');
+  var PORT = 9877;
+  var CODE_EXPIRY = 5*60*1000, SESSION_TIMEOUT = 30*60*1000;
+  function B(opts){ opts=opts||{}; this.onTranscript=opts.onTranscript||function(){}; this.httpServer=null; this.sessions=new Map(); this.currentCode=null; this.sseClients=new Map(); this.started=false; }
+  B.prototype.genCode=function(){ var ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',c=''; for(var i=0;i<6;i++)c+=ch.charAt(Math.floor(Math.random()*ch.length)); return c; };
+  B.prototype.createSession=function(){ this.cleanup(); var code=this.genCode(),token=crypto.randomBytes(32).toString('hex'); this.sessions.set(code,{code:code,token:token,createdAt:Date.now(),lastActivity:Date.now(),connected:false,response:null}); this.currentCode=code; return code; };
+  B.prototype.cleanup=function(){ var now=Date.now(),self=this; this.sessions.forEach(function(s,c){ if(!s.connected&&(now-s.createdAt)>CODE_EXPIRY)self.sessions.delete(c); if(s.connected&&(now-s.lastActivity)>SESSION_TIMEOUT){try{s.response.end();}catch(e){}self.sessions.delete(c);} }); };
+  B.prototype.start=function(){ var self=this; try{ this.httpServer=http.createServer(function(req,res){ res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers','Content-Type, X-Session-Token'); if(req.method==='OPTIONS'){res.writeHead(200);res.end();return;} var url=new URL(req.url||'/','http://'+req.headers.host); if(url.pathname==='/'||url.pathname==='/index.html')self.servePage(res); else if(url.pathname==='/connect'&&req.method==='POST')self.handleConnect(req,res); else if(url.pathname==='/events'&&req.method==='GET')self.handleSSE(req,res,url); else if(url.pathname==='/transcript'&&req.method==='POST')self.handleTranscript(req,res); else if(url.pathname==='/status')self.handleStatus(res); else{res.writeHead(404);res.end('Not found');} }); this.httpServer.on('error',function(err){ if(err.code==='EADDRINUSE'){self.started=false;console.log('[VoiceBridge] Port in use');} }); this.httpServer.listen(PORT,'0.0.0.0',function(){self.started=true;console.log('[VoiceBridge] Started on '+PORT);}); }catch(e){} };
+  B.prototype.stop=function(){ this.sseClients.forEach(function(r){try{r.end();}catch(e){}}); this.sseClients.clear(); if(this.httpServer)try{this.httpServer.close();}catch(e){} this.started=false; };
+  B.prototype.handleConnect=function(req,res){ var chunks=[],self=this; req.on('data',function(c){chunks.push(c);}); req.on('end',function(){ try{ var body=JSON.parse(Buffer.concat(chunks).toString()); var code=(body.sessionCode||'').toUpperCase(); var s=self.sessions.get(code); if(!s){res.writeHead(404,{'Content-Type':'application/json'});res.end(JSON.stringify({success:false,error:'Invalid code'}));return;} s.connected=true;s.lastActivity=Date.now(); res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({success:true,token:s.token})); }catch(e){res.writeHead(400);res.end(JSON.stringify({success:false}));} }); };
+  B.prototype.handleSSE=function(req,res,url){ var token=url.searchParams.get('token'),valid=null,self=this; this.sessions.forEach(function(s){if(s.token===token&&s.connected)valid=s;}); if(!valid){res.writeHead(401);res.end('Unauthorized');return;} res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'}); self.sseClients.set(valid.token,res); valid.response=res; self.sendSSE(res,'connected',{msg:'ok'}); var hb=setInterval(function(){if(!res.writableEnded)self.sendSSE(res,'heartbeat',{});else clearInterval(hb);},30000); req.on('close',function(){clearInterval(hb);self.sseClients.delete(valid.token);}); };
+  B.prototype.handleTranscript=function(req,res){ var chunks=[],self=this; req.on('data',function(c){chunks.push(c);}); req.on('end',function(){ try{ var body=JSON.parse(Buffer.concat(chunks).toString()); if(body.text&&body.text.trim())self.onTranscript(body.text.trim()); res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({success:true})); }catch(e){res.writeHead(400);res.end();} }); };
+  B.prototype.handleStatus=function(res){ res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({status:'running',sessions:this.sessions.size})); };
+  B.prototype.sendSSE=function(res,event,data){ if(!res.writableEnded)res.write('event: '+event+'\ndata: '+JSON.stringify(data)+'\n\n'); };
+  B.prototype.sendToSession=function(code,event,data){ var s=this.sessions.get(code); if(s&&s.response&&!s.response.writableEnded)this.sendSSE(s.response,event,data); };
+  B.prototype.sendTTS=function(b64,text,last){ if(this.currentCode)this.sendToSession(this.currentCode,'tts',{audio:b64,mimeType:'audio/mpeg',text:text,isLast:last}); };
+  B.prototype.hasActiveSession=function(){ if(!this.started||!this.currentCode)return false; var s=this.sessions.get(this.currentCode); return !!(s&&s.connected); };
+  B.prototype.servePage=function(res){ var h=XJ_BRIDGE_HTML; res.writeHead(200,{'Content-Type':'text/html'});res.end(h); };
+  return B;
+})();
+
+// ---- VoiceBridge wiring ----
+(function(){
+  var _bridge = null;
+  function getBridge(){
+    if(!_bridge){
+      _bridge = new XingjiVoiceBridge({
+        onTranscript: function(text){
+          try{
+            var comms = globalThis._xingjiActiveComms;
+            var sent = false;
+            if(comms && comms.size>0){
+              var n5 = comms.values().next().value;
+              if(n5.channels && n5.channels.size>0){
+                var cid = n5.channels.keys().next().value;
+                n5.transportMessage(cid, { type:'user', uuid: crypto.randomUUID?crypto.randomUUID():'vb-'+Date.now(), session_id:'', parent_tool_use_id:null, message:{role:'user',content:text} }, false);
+                sent = true;
+                console.log('[VoiceBridge] Transcript -> Claude:', text);
+              }
+            }
+            if(!sent){
+              M6.window.showWarningMessage('请先在侧边栏打开星迹的CC并开始对话，再使用浏览器语音模式');
+              console.log('[VoiceBridge] No active Claude session');
+            }
+          }catch(e){ console.error('[VoiceBridge]', e); }
+        }
+      });
+      globalThis._xingjiBridge = _bridge;
+    }
+    return _bridge;
+  }
+  setTimeout(function(){
+    try{
+      M6.commands.registerCommand('xingji.openVoiceBridge', function(){
+        var b = getBridge();
+        if(!b.started) b.start();
+        var code = b.createSession();
+        M6.window.showInformationMessage('语音配对码: '+code+' (端口 9877)', '打开浏览器', '复制配对码').then(function(ch){
+          if(ch==='打开浏览器') M6.env.openExternal(M6.Uri.parse('http://127.0.0.1:9877'));
+          else if(ch==='复制配对码'){ M6.env.clipboard.writeText(code); M6.window.showInformationMessage('已复制: '+code); }
+        });
+      });
+      M6.commands.registerCommand('xingji.stopVoiceBridge', function(){ if(_bridge){_bridge.stop();_bridge=null;globalThis._xingjiBridge=null;} M6.window.showInformationMessage('语音桥接已关闭'); });
+      console.log('[VoiceBridge] Commands registered');
+    }catch(e){ console.error('[VoiceBridge] cmd err', e); }
+  }, 250);
+})();

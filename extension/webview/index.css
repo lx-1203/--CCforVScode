@@ -38,6 +38,11 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   box-shadow: 0 0 0 1px #e8a040 !important;
   transition: border-color 0.3s, box-shadow 0.3s;
 }
+/* 循环模式激活时输入框变绿色 */
+.messageInputContainer_cKsPxg[data-pre-send-active][data-loop-active] .messageInput_cKsPxg {
+  border-color: #4ec9b0 !important;
+  box-shadow: 0 0 0 1px #4ec9b0 !important;
+}
 .preSendPreview {
   background: #1e1e1e;
   border: 1px solid #e8a040;
@@ -203,6 +208,84 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   position: absolute;
   top: 0;
   right: 0;
+}
+/* 循环模式样式 — 绿色主题 */
+.preSendPreview[data-loop-active] {
+  border-color: #4ec9b0;
+  box-shadow: 0 0 0 1px rgba(78,201,176,0.2), 0 2px 8px rgba(0,0,0,0.3);
+}
+.preSendPreview[data-loop-active] .preSendPreviewHeader {
+  color: #4ec9b0;
+}
+.preSendPreview[data-loop-active] .preSendPreviewHeader svg {
+  stroke: #4ec9b0;
+}
+/* 循环容器内，非循环的普通条目保留橙色（共存时橙色+绿色） */
+.preSendPreview[data-loop-active] .preSendPreviewItem:not(.preSendPreviewItemLoop):not(.preSendPreviewItemOptimizing) {
+  border-left: 2px solid #e8a040;
+}
+.preSendPreview[data-loop-active] .preSendPreviewItem:not(.preSendPreviewItemLoop):not(.preSendPreviewItemOptimizing) .preSendPreviewItemText {
+  color: #e0a860;
+}
+.preSendPreview[data-loop-active] .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-thumb {
+  background: rgba(78,201,176,0.3);
+}
+.preSendPreview[data-loop-active] .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(78,201,176,0.5);
+}
+.preSendPreviewLoopControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: 11px;
+  color: #ccc;
+}
+.preSendPreviewLoopInput {
+  width: 48px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px;
+  background: var(--vscode-input-background, #333);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.preSendPreviewLoopInput::-webkit-inner-spin-button,
+.preSendPreviewLoopInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.preSendPreviewLoopInput:focus {
+  border-color: #4ec9b0;
+}
+.preSendPreviewItemLoop {
+  border-left: 2px solid #4ec9b0;
+}
+.preSendPreviewItemLoop .preSendPreviewBtnSend:hover {
+  color: #4ec9b0;
+  background: rgba(78,201,176,0.12);
+  border-color: rgba(78,201,176,0.35);
+}
+.preSendPreviewItemLoop .preSendPreviewBtnPause:hover {
+  color: #e8a040;
+  background: rgba(232,160,64,0.12);
+  border-color: rgba(232,160,64,0.35);
+}
+.preSendPreview[data-loop-paused] .preSendPreviewItemLoop .preSendPreviewBtnPause:hover {
+  color: #4ec9b0;
+  background: rgba(78,201,176,0.12);
+  border-color: rgba(78,201,176,0.35);
+}
+/* 循环暂停指示 */
+.preSendPreview[data-loop-paused] .preSendPreviewHeader {
+  color: #e8a040;
+}
+.preSendPreview[data-loop-paused] .preSendPreviewHeader svg {
+  stroke: #e8a040;
 }
 /* 提示词优化按钮 */
 .optimizeButton_gGYT1w {

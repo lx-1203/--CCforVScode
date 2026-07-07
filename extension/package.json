@@ -171,6 +171,114 @@
           "type": "string",
           "default": "resources/audio/主人，我有个问题想问你。.mp3",
           "description": "AI 在 YOLO 模式下提问时播放的音频文件路径（绝对路径或相对于扩展目录的路径，支持 mp3/wav/ogg/webm）。"
+        },
+        "claudeCode.voice.ttsEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用语音朗读。Claude 回复后自动朗读文本。"
+        },
+        "claudeCode.voice.provider": {
+          "type": "string",
+          "enum": ["edge", "qwen", "mimo", "gemini"],
+          "enumDescriptions": [
+            "Edge TTS — 微软免费服务，无需 API 密钥，支持中文，零配置即用",
+            "通义千问 Qwen TTS — 阿里云 DashScope，需 API 密钥，支持实时流式",
+            "小米 MiMo TTS — 支持音色克隆、音色设计、情感语气标签",
+            "Google Gemini TTS — 30 种预置音色，PCM 原始音频输出"
+          ],
+          "default": "edge",
+          "description": "语音合成引擎。Edge 免费无需配置；其他引擎需先在下方填入 API 密钥。"
+        },
+        "claudeCode.voice.ttsRate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 3.0,
+          "default": 1.0,
+          "description": "朗读语速倍率（0.5 = 慢速，1.0 = 正常，2.0 = 快速，3.0 = 极快）。对 Edge TTS 转换为 SSML prosody rate。"
+        },
+        "claudeCode.voice.chunkSize": {
+          "type": "number",
+          "minimum": 80,
+          "maximum": 2000,
+          "default": 250,
+          "description": "每个合成块的最大字符数。长文本在句子边界切分，当前块播放时下一块并行合成以降低延迟。"
+        },
+        "claudeCode.voice.edge.voice": {
+          "type": "string",
+          "default": "zh-CN-XiaoxiaoNeural",
+          "description": "Edge TTS 音色名称。常用中文：zh-CN-XiaoxiaoNeural（晓晓）、zh-CN-YunxiNeural（云希）、zh-CN-YunyangNeural（云扬）、zh-CN-XiaoyiNeural（晓伊）。完整列表参考 Edge TTS 文档。"
+        },
+        "claudeCode.voice.qwen.voice": {
+          "type": "string",
+          "enum": ["Cherry", "Serena", "Ethan", "Chelsie", "Kai", "Dylan", "Jada", "Sunny"],
+          "default": "Cherry",
+          "description": "Qwen TTS 音色。Cherry（推荐）、Serena、Ethan、Chelsie 支持全部模型；Kai / Dylan / Jada / Sunny 仅支持 Flash 模型。"
+        },
+        "claudeCode.voice.qwen.model": {
+          "type": "string",
+          "enum": ["qwen3-tts-flash", "qwen3-tts-instruct-flash"],
+          "default": "qwen3-tts-flash",
+          "description": "Qwen TTS 模型。qwen3-tts-flash 为快速合成；qwen3-tts-instruct-flash 支持语音指令（如「用温柔的语气朗读」）。"
+        },
+        "claudeCode.voice.qwen.endpoint": {
+          "type": "string",
+          "enum": ["china", "international"],
+          "enumDescriptions": [
+            "国内站 dashscope.aliyuncs.com（需国内 DashScope API Key）",
+            "国际站 dashscope-intl.aliyuncs.com（需国际站 API Key）"
+          ],
+          "default": "china",
+          "description": "Qwen DashScope 接入区域，需与 API Key 的站点一致。"
+        },
+        "claudeCode.voice.qwen.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "阿里云 DashScope API Key。获取地址：https://dashscope.aliyun.com 。等同于环境变量 DASHSCOPE_API_KEY。保存在 VS Code SecretStorage 中。"
+        },
+        "claudeCode.voice.mimo.voice": {
+          "type": "string",
+          "enum": ["Chloe", "Mia", "Milo", "Dean", "冰糖", "茉莉", "苏打", "白桦"],
+          "default": "Chloe",
+          "description": "MiMo 预置音色。Chloe / Mia / Milo / Dean 为英文音色；冰糖 / 茉莉 / 苏打 / 白桦 为中文音色。"
+        },
+        "claudeCode.voice.mimo.model": {
+          "type": "string",
+          "enum": ["mimo-v2.5-tts", "mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts-voiceclone", "mimo-v2-tts"],
+          "enumDescriptions": [
+            "预置音色（冰糖 / Chloe 等），支持唱歌模式与风格标签控制",
+            "音色设计 — 用自然语言描述想要的音色，无需预置",
+            "音色克隆 — 从 mp3/wav 样本（≤10 MB）克隆自定义音色",
+            "旧版 V2 模型（仅支持 default_zh / default_en）"
+          ],
+          "default": "mimo-v2.5-tts",
+          "description": "MiMo TTS 模型。v2.5 新增音色设计与音色克隆。"
+        },
+        "claudeCode.voice.mimo.baseUrl": {
+          "type": "string",
+          "default": "https://token-plan-cn.xiaomimimo.com/v1",
+          "description": "MiMo Token Plan 接口地址。默认为国内 Token Plan 接入点。"
+        },
+        "claudeCode.voice.mimo.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "MiMo Token Plan API Key（以 tp- 开头，非 sk- 按量计费密钥）。获取地址：https://token-plan-cn.xiaomimimo.com 。保存在 VS Code SecretStorage 中。"
+        },
+        "claudeCode.voice.gemini.voice": {
+          "type": "string",
+          "enum": ["Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Autonoe", "Algieba", "Despina", "Algenib", "Schedar", "Achernar", "Sulafat"],
+          "default": "Kore",
+          "description": "Gemini 预置音色。推荐：Zephyr / Puck / Charon / Kore。共 30 个可选音色。"
+        },
+        "claudeCode.voice.gemini.model": {
+          "type": "string",
+          "enum": ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts", "gemini-3.1-flash-tts-preview"],
+          "default": "gemini-2.5-flash-preview-tts",
+          "description": "Gemini TTS 模型。Flash 为快速推理；Pro 为高精度；3.1 为最新预览版。"
+        },
+        "claudeCode.voice.gemini.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google AI Studio API Key（以 AIzaSy 开头）。获取地址：https://aistudio.google.com/apikey 。等同于环境变量 GEMINI_API_KEY 或 GOOGLE_API_KEY。保存在 VS Code SecretStorage 中。"
         }
       }
     },
@@ -305,6 +413,26 @@
       {
         "command": "claude-vscode.optimizePrompt",
         "title": "星迹的CC✨: 优化提示词"
+      },
+      {
+        "command": "xingji.toggleTTS",
+        "title": "星迹的CC✨: 切换语音朗读"
+      },
+      {
+        "command": "xingji.stopTTS",
+        "title": "星迹的CC✨: 停止语音朗读"
+      },
+      {
+        "command": "xingji.openVoiceBridge",
+        "title": "星迹的CC✨: 打开浏览器语音模式"
+      },
+      {
+        "command": "xingji.stopVoiceBridge",
+        "title": "星迹的CC✨: 关闭浏览器语音桥接"
+      },
+      {
+        "command": "xingji.setVoiceApiKey",
+        "title": "星迹的CC✨: 设置语音 API Key (Qwen/MiMo/Gemini)"
       }
     ],
     "keybindings": [
@@ -377,6 +505,13 @@
         "win": "ctrl+shift+t",
         "linux": "ctrl+shift+t",
         "when": "config.claudeCode.enableReopenClosedSessionShortcut && claude-vscode.lastClosedWasSession"
+      },
+      {
+        "command": "xingji.toggleTTS",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "win": "ctrl+shift+m",
+        "linux": "ctrl+shift+m"
       }
     ],
     "viewsContainers": {
