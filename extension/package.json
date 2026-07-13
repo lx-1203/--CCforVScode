@@ -104,6 +104,11 @@
           "default": false,
           "description": "启用预发送模式：AI 运行时按 Tab 或 Enter 不会中断当前生成，而是将消息排队，等 AI 完成后自动发送。类似 Codex 的 Steer 预发送功能。"
         },
+        "claudeCode.autoCompactEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用自动压缩：当上下文使用量超过 90% 时，当前任务完成后自动执行 /compact 压缩上下文。需要手动开启。"
+        },
         "claudeCode.askUserQuestion": {
           "type": "boolean",
           "default": true,

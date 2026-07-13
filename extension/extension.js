@@ -55179,6 +55179,7 @@ class JE {
     let V = this.channels.get(K);
     if (!V) {
       this.logger.warn(`Channel not found: ${K}`);
+      this.send({ type: "interrupt_result", channelId: K, success: !1 });
       return;
     }
     if (V._interrupting) {
@@ -55187,22 +55188,24 @@ class JE {
     }
     V._interrupting = !0;
     let B = 3, j = 2000;
-    for (let H = 0; H < B; H++) {
-      try {
-        let x = new Promise((U, Z) => setTimeout(() => Z(new Error("Interrupt timeout")), j));
-        await Promise.race([V.query.interrupt(), x]);
-        this.logger.log(`Interrupted Claude for channel: ${K} (attempt ${H + 1})`);
-        this.send({ type: "interrupt_result", channelId: K, success: !0 });
-        V._interrupting = !1;
-        return;
-      } catch (U) {
-        this.logger.warn(`Interrupt attempt ${H + 1}/${B} failed for channel ${K}: ${U}`);
-        if (H < B - 1) await new Promise(U => setTimeout(U, 500));
+    try {
+      for (let H = 0; H < B; H++) {
+        try {
+          let x = new Promise((U, Z) => setTimeout(() => Z(new Error("Interrupt timeout")), j));
+          await Promise.race([V.query.interrupt(), x]);
+          this.logger.log(`Interrupted Claude for channel: ${K} (attempt ${H + 1})`);
+          this.send({ type: "interrupt_result", channelId: K, success: !0 });
+          return;
+        } catch (U) {
+          this.logger.warn(`Interrupt attempt ${H + 1}/${B} failed for channel ${K}: ${U}`);
+          if (H < B - 1) await new Promise(U => setTimeout(U, 500));
+        }
       }
+      this.logger.error(`All ${B} interrupt attempts failed for channel: ${K}`);
+      this.send({ type: "interrupt_result", channelId: K, success: !1 });
+    } finally {
+      V._interrupting = !1;
     }
-    this.logger.error(`All ${B} interrupt attempts failed for channel: ${K}`);
-    this.send({ type: "interrupt_result", channelId: K, success: !1 });
-    V._interrupting = !1;
   }
   logEvent(K, V, B = {}) {
     let j = this.channels.get(K);
@@ -55632,6 +55635,7 @@ class JE {
             marketplaceType: this.getMarketplaceType(),
             useCtrlEnterToSend: this.settings.getUseCtrlEnterToSend(),
             preSend: this.settings.getPreSend(),
+            autoCompactEnabled: this.settings.getAutoCompactEnabled(),
             askUserQuestion: this.settings.getAskUserQuestion(),
             audioFeedback: this.settings.getAudioFeedback(),
             chromeMcpState: j?.chromeMcpState ?? { status: "disconnected" },
@@ -55773,6 +55777,8 @@ class JE {
         return this.setAskUserQuestion(K.channelId, K.request.enabled);
       case "set_audio_feedback":
         return this.setAudioFeedback(K.channelId, K.request.enabled);
+      case "set_auto_compact_enabled":
+        return this.setAutoCompactEnabled(K.channelId, K.request.enabled);
       case "tool_translate_ai":
         return this.toolTranslateAI(K.request.tools, V);
       case "optimize_prompt":
@@ -56174,6 +56180,11 @@ class JE {
     await this.settings.setAudioFeedback(V);
     this.pushStateUpdate();
     return { type: "set_audio_feedback_response" };
+  }
+  async setAutoCompactEnabled(K, V) {
+    await this.settings.setAutoCompactEnabled(V);
+    this.pushStateUpdate();
+    return { type: "set_auto_compact_enabled_response" };
   }
   async optimizePrompt(K, V, B, j, signal, channelId, sessionId, conversationContext) {
     let H0 = Date.now();
@@ -56617,6 +56628,7 @@ ${K || ""}`;
       marketplaceType: this.getMarketplaceType(),
       useCtrlEnterToSend: this.settings.getUseCtrlEnterToSend(),
       preSend: this.settings.getPreSend(),
+      autoCompactEnabled: this.settings.getAutoCompactEnabled(),
       askUserQuestion: this.settings.getAskUserQuestion(),
       audioFeedback: this.settings.getAudioFeedback(),
       chromeMcpState: { status: "disconnected" },
@@ -68464,6 +68476,9 @@ class sC {
   async setPreSend(K) {
     await s3.workspace.getConfiguration("claudeCode").update("preSend", K, s3.ConfigurationTarget.Global);
   }
+  async setAutoCompactEnabled(K) {
+    await s3.workspace.getConfiguration("claudeCode").update("autoCompactEnabled", K, s3.ConfigurationTarget.Global);
+  }
   async setAskUserQuestion(K) {
     await s3.workspace.getConfiguration("claudeCode").update("askUserQuestion", K, s3.ConfigurationTarget.Global);
   }
@@ -68491,6 +68506,9 @@ class sC {
   }
   getPreSend() {
     return a0("preSend") || !1;
+  }
+  getAutoCompactEnabled() {
+    return a0("autoCompactEnabled") || !1;
   }
   getAskUserQuestion() {
     let K = a0("askUserQuestion");

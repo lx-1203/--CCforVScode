@@ -89,6 +89,21 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(232,160,64,0.3) transparent;
+  transition: max-height 0.3s ease;
+}
+/* 收纳状态：只显示前2条的高度 */
+.preSendPreview[data-collapsed] .preSendPreviewItems {
+  max-height: 72px;
+  overflow: hidden;
+}
+.preSendPreview .preSendPreviewBtnToggle {
+  color: #888;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.preSendPreview .preSendPreviewBtnToggle:hover {
+  color: #e8a040;
+  background: rgba(232,160,64,0.12);
 }
 .preSendPreview .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar {
   width: 5px;
@@ -233,6 +248,11 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
 .preSendPreview[data-loop-active] .preSendPreviewItems.preSendPreviewScroll::-webkit-scrollbar-thumb:hover {
   background: rgba(78,201,176,0.5);
 }
+/* 循环模式下收纳按钮颜色 */
+.preSendPreview[data-loop-active] .preSendPreviewBtnToggle:hover {
+  color: #4ec9b0;
+  background: rgba(78,201,176,0.12);
+}
 .preSendPreviewLoopControls {
   display: inline-flex;
   align-items: center;
@@ -313,6 +333,35 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
 .optimizeButton_gGYT1w:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+/* 停止暂停态 */
+.preSendPreview[data-stop-paused] {
+  border-color: #f48771;
+  box-shadow: 0 0 0 1px rgba(244,135,113,0.3), 0 2px 8px rgba(0,0,0,0.3);
+}
+.preSendPreview[data-stop-paused] .preSendPreviewHeader {
+  color: #f48771;
+}
+.preSendPreview[data-stop-paused] .preSendPreviewHeader svg {
+  stroke: #f48771;
+}
+.preSendPreviewBtnResume {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(244,135,113,0.4);
+  background: rgba(244,135,113,0.12);
+  color: #f48771;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.preSendPreviewBtnResume:hover {
+  background: rgba(244,135,113,0.25);
+  border-color: #f48771;
 }
 @keyframes spin {
   from { transform: rotate(0deg); }
