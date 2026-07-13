@@ -1,0 +1,42 @@
+  async optimizePrompt(K, V, B, j, signal, channelId) {
+    let H0 = Date.now();
+    try {
+      let G0 = '';
+      let projectDir = V || this.cwd;
+      try {
+        if (projectDir) {
+          let X0 = oD.join(projectDir, 'package.json');
+          try {
+            let Q0 = JSON.parse(await S2.readFile(X0, 'utf-8'));
+            G0 += '项目: ' + (Q0.name || oD.basename(projectDir)) + '
+';
+            let deps = { ...Q0.dependencies, ...Q0.devDependencies };
+            let keys = Object.keys(deps);
+            if (keys.length > 0) {
+              let frameworks = keys.filter(k => ['react','vue','angular','next','nuxt','svelte','express','koa','fastify','django','flask','spring','gin','echo'].some(f => k.toLowerCase().includes(f)));
+              if (frameworks.length > 0) G0 += '框架: ' + frameworks.join(', ') + '
+';
+              let bundlers = keys.filter(k => ['webpack','vite','rollup','esbuild','turbo','parcel'].some(f => k.toLowerCase().includes(f)));
+              if (bundlers.length > 0) G0 += '构建工具: ' + bundlers.join(', ') + '
+';
+              let langs = keys.filter(k => ['typescript','ts-node','tsx','ts-jest','@types/'].some(f => k.toLowerCase().includes(f)));
+              if (langs.length > 0) G0 += '语言: TypeScript
+';
+            }
+          } catch {}
+          try {
+            let files = await S2.readdir(projectDir);
+            let keyDirs = files.filter(f => ['src','app','lib','components','pages','api','utils','hooks','services','tests','__tests__','spec'].includes(f));
+            if (keyDirs.length > 0) G0 += '关键目录: ' + keyDirs.join(', ') + '
+';
+          } catch {}
+        }
+      } catch {}
+      if (j) G0 += '当前文件: ' + j + '
+';
+      if (B) {
+        let Z0 = B.length > 2000 ? B.substring(0, 2000) + '
+...(已截断)' : B;
+        G0 += '选中代码:
+\\n';
+      }
