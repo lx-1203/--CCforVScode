@@ -8,3 +8,9 @@ _*.js
 **/*.map
 .gitignore
 .vscode/**
+
+# CodeKey npm 开发依赖（不要打进 vsix）
+codekey/node_modules/.package-lock.json
+codekey/node_modules/.bin/**
+codekey/package.json
+codekey/package-lock.json

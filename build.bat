@@ -52,6 +52,12 @@ findstr /c:"synthesizeMiMo" "%INSTALL_DIR%\extension.js" >nul && echo   [OK] MiM
 findstr /c:"XingjiVoiceBridge" "%INSTALL_DIR%\extension.js" >nul && echo   [OK] VoiceBridge server
 findstr /c:"xingji-settings-btn" "%INSTALL_DIR%\webview\index.js" >nul && echo   [OK] Settings button
 findstr /c:"__xingjiVscodeShim" "%INSTALL_DIR%\webview\index.js" >nul && echo   [OK] VSCode API shim
+findstr /c:"CodeKey Bridge Manager" "%INSTALL_DIR%\extension.js" >nul && echo   [OK] CodeKey Bridge Manager
+findstr /c:"xj-codekey-card" "%INSTALL_DIR%\webview\index.js" >nul && echo   [OK] CodeKey webview UI
+findstr /c:"xj-codekey" "%INSTALL_DIR%\webview\index.css" >nul && echo   [OK] CodeKey CSS styles
+findstr /c:"codekey_pair" "%INSTALL_DIR%\extension.js" >nul && echo   [OK] CodeKey N5 route
+if exist "%INSTALL_DIR%\codekey\hooks\codekey_hook_permission.js" (echo   [OK] CodeKey hook scripts) else (echo   [WARN] CodeKey hooks missing)
+if exist "%INSTALL_DIR%\codekey\node_modules\ws\index.js" (echo   [OK] CodeKey ws module) else (echo   [WARN] CodeKey ws missing)
 
 echo.
 echo ═══ Build complete! Restart VS Code to activate. ═══

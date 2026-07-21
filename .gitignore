@@ -2,3 +2,9 @@
 *.zip
 .claude/
 extension/resources/native-binary/
+node_modules/
+dist/
+.env.*
+nul
+*.apk
+temp/

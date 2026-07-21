@@ -284,6 +284,81 @@
           "type": "string",
           "default": "",
           "description": "Google AI Studio API Key（以 AIzaSy 开头）。获取地址：https://aistudio.google.com/apikey 。等同于环境变量 GEMINI_API_KEY 或 GOOGLE_API_KEY。保存在 VS Code SecretStorage 中。"
+        },
+        "claudeCode.codekey.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "启用 CodeKey 手机远程控制功能。开启后可通过手机远程审批 AI 操作、接收通知、发送消息。**需要先配对手机设备。**"
+        },
+        "claudeCode.codekey.relayServer": {
+          "type": "string",
+          "default": "ws://146.56.247.15/ws",
+          "markdownDescription": "CodeKey 中继服务器 WebSocket 地址。默认使用官方服务器，可配置为自建服务器地址。"
+        },
+        "claudeCode.codekey.bridgePort": {
+          "type": "number",
+          "default": 3001,
+          "markdownDescription": "Bridge HTTP 服务器端口（仅本地 127.0.0.1 可访问）。如遇端口冲突将自动递增。修改后需重启扩展。"
+        },
+        "claudeCode.codekey.approvalTimeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 10,
+          "maximum": 600,
+          "markdownDescription": "权限审批超时时间（秒）。超时后将根据 `codekey.timeoutBehavior` 自动决定通过或拒绝。"
+        },
+        "claudeCode.codekey.timeoutBehavior": {
+          "type": "string",
+          "enum": ["deny", "allow"],
+          "enumDescriptions": [
+            "超时后自动拒绝（安全优先）",
+            "超时后自动通过（效率优先）"
+          ],
+          "default": "deny",
+          "markdownDescription": "审批超时后的默认行为。`deny` = 拒绝，`allow` = 通过。"
+        },
+        "claudeCode.codekey.privacyFilterEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用隐私过滤器。在事件推送到手机前，自动扫描并脱敏 API Key、Token、密码等敏感信息。"
+        },
+        "claudeCode.codekey.e2eEnabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "启用端到端加密。PC 与手机之间的所有消息使用 AES-256-GCM 加密传输，中继服务器无法解密。"
+        },
+        "claudeCode.codekey.requireApproval": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "AI 执行工具操作前需手机端审批。关闭后所有命令自动执行（类似 YOLO 模式），但仍会推送通知到手机。"
+        },
+        "claudeCode.codekey.askUserQuestionRemote": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "YOLO 模式下，将 Claude 的提问（AskUserQuestion）推送到手机端，可在手机上选择答案。"
+        },
+        "claudeCode.codekey.autoInstallHooks": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "自动在工作区的 `.claude/settings.local.json` 中安装 CodeKey Hook 脚本。关闭后需手动配置。"
+        },
+        "claudeCode.codekey.maxDevices": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "最大可绑定的移动设备数量。"
+        },
+        "claudeCode.codekey.neverPushTools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["Read"],
+          "description": "不推送到手机的 AI 工具列表。默认不推送 Read（读取文件）操作以减少干扰。"
+        },
+        "claudeCode.codekey.dndEnabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "免打扰模式。开启后审批请求不会推送到手机，改为本地 VS Code 弹窗审批。"
         }
       }
     },
@@ -438,6 +513,22 @@
       {
         "command": "xingji.setVoiceApiKey",
         "title": "星迹的CC✨: 设置语音 API Key (Qwen/MiMo/Gemini)"
+      },
+      {
+        "command": "xingji.codekey.showPairing",
+        "title": "星迹的CC✨: CodeKey 绑定手机"
+      },
+      {
+        "command": "xingji.codekey.showDevices",
+        "title": "星迹的CC✨: CodeKey 设备管理"
+      },
+      {
+        "command": "xingji.codekey.showHistory",
+        "title": "星迹的CC✨: CodeKey 审批历史"
+      },
+      {
+        "command": "xingji.codekey.toggle",
+        "title": "星迹的CC✨: CodeKey 开关"
       }
     ],
     "keybindings": [

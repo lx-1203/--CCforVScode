@@ -54,6 +54,8 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   line-height: 1.5;
   position: relative;
   box-shadow: 0 0 0 1px rgba(232,160,64,0.3), 0 2px 8px rgba(0,0,0,0.3);
+  user-select: text;
+  -webkit-user-select: text;
 }
 .preSendPreview .preSendPreviewHeader {
   display: flex;
@@ -62,6 +64,8 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   margin-bottom: 4px;
   font-size: 11px;
   color: #e8a040;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .preSendPreview .preSendPreviewHeader svg {
   vertical-align: -1px;
@@ -138,6 +142,9 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   word-break: break-word;
   white-space: pre-wrap;
   line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 .preSendPreview .preSendPreviewItemActions {
   display: flex;
@@ -367,3 +374,459 @@ html{display:flex;overscroll-behavior:none;position:relative;flex:1;height:100%}
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ══════════════════════════════════════════════════════════
+   星迹的CC ✨ — CodeKey 手机远程控制 UI 样式
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Base Card ── */
+.xj-codekey-card {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 12px;
+  color: #cccccc;
+}
+.xj-codekey-card .xj-ck-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #e8a040;
+}
+.xj-codekey-card .xj-ck-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 6px;
+}
+.xj-codekey-card .xj-ck-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(232,160,64,0.35);
+  background: transparent;
+  color: #e8a040;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.xj-codekey-card .xj-ck-btn:hover {
+  background: rgba(232,160,64,0.15);
+  border-color: #e8a040;
+}
+.xj-codekey-card .xj-ck-btn.xj-ck-danger {
+  border-color: rgba(241,76,76,0.35);
+  color: #f14c4c;
+}
+.xj-codekey-card .xj-ck-btn.xj-ck-danger:hover {
+  background: rgba(241,76,76,0.15);
+  border-color: #f14c4c;
+}
+
+/* ── Pairing Card ── */
+.xj-codekey-pair .xj-ck-code {
+  font-size: 28px;
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #FFD700;
+  text-align: center;
+  padding: 8px 0;
+  background: rgba(255,215,0,0.08);
+  border-radius: 6px;
+  margin: 8px 0;
+  user-select: all;
+}
+
+/* ── Connected Card ── */
+.xj-codekey-connected .xj-ck-device {
+  font-size: 13px;
+  color: #cccccc;
+  margin-bottom: 4px;
+}
+.xj-codekey-connected .xj-ck-sync {
+  font-size: 11px;
+  color: #888;
+}
+.xj-codekey-connected .xj-ck-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ec9b0;
+  margin-right: 6px;
+  box-shadow: 0 0 6px rgba(78,201,176,0.4);
+}
+
+/* ── Approval Card ── */
+.xj-codekey-approval {
+  border-color: rgba(232,160,64,0.3);
+  background: rgba(232,160,64,0.05);
+}
+.xj-codekey-approval .xj-ck-cmd {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  background: rgba(0,0,0,0.3);
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin: 6px 0;
+  color: #aaa;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.xj-codekey-approval .xj-ck-wait {
+  font-size: 11px;
+  color: #e8a040;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.xj-codekey-approval .xj-ck-wait::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(232,160,64,0.3);
+  border-top-color: #e8a040;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.xj-codekey-approval .xj-ck-wait.xj-ck-warning {
+  color: #f14c4c;
+}
+.xj-codekey-approval .xj-ck-wait.xj-ck-warning::before {
+  border-color: rgba(241,76,76,0.3);
+  border-top-color: #f14c4c;
+}
+
+/* ── Device Panel ── */
+.xj-codekey-device-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.xj-codekey-device-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 12px;
+}
+.xj-codekey-device-list li:last-child {
+  border-bottom: none;
+}
+.xj-codekey-device-list .xj-ck-device-name {
+  color: #cccccc;
+}
+.xj-codekey-device-list .xj-ck-device-status {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.xj-codekey-device-list .xj-ck-online {
+  color: #4ec9b0;
+  background: rgba(78,201,176,0.1);
+}
+.xj-codekey-device-list .xj-ck-offline {
+  color: #888;
+  background: rgba(255,255,255,0.05);
+}
+
+/* ── History Panel ── */
+.xj-codekey-history-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 11px;
+}
+.xj-codekey-history-item .xj-ck-h-decision {
+  margin-right: 8px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.xj-codekey-history-item .xj-ck-h-approve { color: #4ec9b0; }
+.xj-codekey-history-item .xj-ck-h-deny { color: #f14c4c; }
+.xj-codekey-history-item .xj-ck-h-timeout { color: #FFD700; }
+.xj-codekey-history-item .xj-ck-h-content { flex: 1; min-width: 0; }
+.xj-codekey-history-item .xj-ck-h-title { color: #cccccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xj-codekey-history-item .xj-ck-h-reply { color: #888; margin-top: 2px; }
+
+/* ── Light Theme ── */
+.vscode-light .xj-codekey-card {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.1);
+  color: #333;
+}
+.vscode-light .xj-codekey-card .xj-ck-hint { color: #666; }
+.vscode-light .xj-codekey-card .xj-ck-btn { color: #c6613f; border-color: rgba(198,97,63,0.35); }
+.vscode-light .xj-codekey-card .xj-ck-btn:hover { background: rgba(198,97,63,0.1); }
+.vscode-light .xj-codekey-pair .xj-ck-code { color: #8b6914; background: rgba(139,105,20,0.08); }
+.vscode-light .xj-codekey-approval .xj-ck-cmd { background: rgba(0,0,0,0.05); color: #555; }
+.vscode-light .xj-codekey-device-list li { border-color: rgba(0,0,0,0.06); }
+.xj-codekey-approval .xj-ck-expired { color: #f14c4c; font-size: 11px; }
+
+/* ══════════════════════════════════════════════════════════
+   星迹的CC ✨ — 自定义设置面板样式 (Modal/Drawer/Tab)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Container: 3 modes ── */
+#xj-settings-container {
+  display: none;
+  z-index: 99999;
+  font-family: var(--vscode-editor-font-family, -apple-system, sans-serif);
+}
+
+/* ID-level overrides to beat the #xj-settings-container { display:none } */
+#xj-settings-container.xj-set-mode-modal.xj-set-visible { display: flex; }
+#xj-settings-container.xj-set-mode-drawer.xj-set-visible { display: block; }
+#xj-settings-container.xj-set-mode-tab.xj-set-visible { display: flex; }
+
+/* ── Modal mode ── */
+.xj-set-mode-modal {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.55);
+  align-items: center; justify-content: center;
+}
+.xj-set-mode-modal .xj-set-panel {
+  width: 600px; max-height: 80vh;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+
+/* ── Drawer mode ── */
+.xj-set-mode-drawer {
+  position: fixed; top: 0; right: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
+.xj-set-mode-drawer .xj-set-panel {
+  position: absolute; top: 0; right: 0; width: 420px; height: 100%;
+  border-radius: 0; border-right: none;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.3);
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+.xj-set-mode-drawer.xj-set-visible .xj-set-panel { transform: translateX(0); pointer-events: auto; }
+.xj-set-mode-drawer .xj-set-body { max-height: calc(100vh - 110px); }
+
+/* ── Tab mode (default, embedded) ── */
+.xj-set-mode-tab {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: var(--vscode-editor-background, #1e1e2e);
+  flex-direction: column;
+}
+.xj-set-mode-tab .xj-set-panel {
+  width: 100%; height: 100%; border-radius: 0; border: none;
+  display: flex; flex-direction: column;
+}
+.xj-set-mode-tab .xj-set-body { flex: 1; max-height: none; overflow-y: auto; }
+
+/* ── Panel base ── */
+.xj-set-panel {
+  background: var(--vscode-editor-background, #1e1e2e);
+  border: 1px solid var(--vscode-panel-border, #333);
+  color: var(--vscode-foreground, #ddd);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.xj-set-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0;
+}
+.xj-set-header-title { font-size: 16px; font-weight: 700; color: #e8a040; }
+.xj-set-header-actions { display: flex; align-items: center; gap: 10px; }
+.xj-set-mode-sel {
+  background: var(--vscode-dropdown-background, #2a2a3e);
+  border: 1px solid var(--vscode-dropdown-border, #444);
+  border-radius: 6px; padding: 4px 10px;
+  color: var(--vscode-dropdown-foreground, #ddd);
+  font-size: 12px; outline: none; cursor: pointer;
+}
+.xj-set-mode-sel:focus { border-color: #e8a040; }
+.xj-set-close {
+  background: none; border: none; color: var(--vscode-foreground, #ddd);
+  font-size: 24px; cursor: pointer; padding: 0 6px; opacity: 0.6; line-height: 1;
+}
+.xj-set-close:hover { opacity: 1; }
+
+/* ── Tabs ── */
+.xj-set-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0; padding: 0 20px;
+}
+.xj-set-tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 10px 18px; font-size: 13px; color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.xj-set-tab:hover { color: var(--vscode-foreground, #ddd); }
+.xj-set-tab-active { color: #e8a040; border-bottom-color: #e8a040; }
+
+/* ── SVG Icons ── */
+.xj-set-icon { width: 16px; height: 16px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.xj-set-tab .xj-set-icon { width: 15px; height: 15px; }
+.xj-set-header-title .xj-set-icon { width: 18px; height: 18px; vertical-align: -3px; margin-right: 3px; }
+.xj-ck-section-title .xj-set-icon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+
+/* ── Body ── */
+.xj-set-body {
+  padding: 16px 20px; overflow-y: auto; flex: 1;
+  max-height: calc(80vh - 110px);
+}
+.xj-set-body::-webkit-scrollbar { width: 6px; }
+.xj-set-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+/* ── Setting Item ── */
+.xj-set-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+  gap: 16px;
+}
+.xj-set-item:last-child { border-bottom: none; }
+.xj-set-item-left { flex: 1; min-width: 0; }
+.xj-set-item-label { font-size: 13px; color: var(--vscode-foreground, #ddd); font-weight: 500; }
+.xj-set-item-desc { font-size: 11px; color: var(--vscode-descriptionForeground, #888); margin-top: 2px; }
+.xj-set-item-right { flex-shrink: 0; display: flex; align-items: center; }
+
+/* ── Toggle switch ── */
+.xj-set-toggle { position: relative; display: inline-block; width: 40px; height: 22px; cursor: pointer; }
+.xj-set-toggle input { opacity: 0; width: 0; height: 0; }
+.xj-set-slider {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.15); border-radius: 22px;
+  transition: background 0.2s;
+}
+.xj-set-slider::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s;
+}
+.xj-set-toggle input:checked + .xj-set-slider { background: #e8a040; }
+.xj-set-toggle input:checked + .xj-set-slider::before { transform: translateX(18px); }
+
+/* ── Select ── */
+.xj-set-sel {
+  background: var(--vscode-dropdown-background, #2a2a3e);
+  border: 1px solid var(--vscode-dropdown-border, #444);
+  border-radius: 6px; padding: 6px 10px;
+  color: var(--vscode-dropdown-foreground, #ddd);
+  font-size: 12px; outline: none; cursor: pointer; min-width: 120px;
+}
+.xj-set-sel:focus { border-color: #e8a040; }
+
+/* ── Number input ── */
+.xj-set-num {
+  background: var(--vscode-input-background, #2a2a3e);
+  border: 1px solid var(--vscode-input-border, #444);
+  border-radius: 6px; padding: 6px 10px; width: 80px;
+  color: var(--vscode-input-foreground, #ddd);
+  font-size: 12px; outline: none;
+}
+.xj-set-num:focus { border-color: #e8a040; }
+
+/* ── Text input ── */
+.xj-set-inp {
+  background: var(--vscode-input-background, #2a2a3e);
+  border: 1px solid var(--vscode-input-border, #444);
+  border-radius: 6px; padding: 6px 10px; width: 220px;
+  color: var(--vscode-input-foreground, #ddd);
+  font-size: 12px; outline: none;
+}
+.xj-set-inp:focus { border-color: #e8a040; }
+
+/* ── Range slider ── */
+.xj-set-range-row { display: flex; align-items: center; gap: 8px; }
+.xj-set-range { flex: 1; width: 120px; accent-color: #e8a040; }
+.xj-set-range-val { font-size: 12px; color: #e8a040; font-weight: 600; min-width: 36px; text-align: right; }
+
+/* ── Password row ── */
+.xj-set-pw-row { display: flex; align-items: center; gap: 6px; }
+.xj-set-pw-row .xj-set-inp { width: 160px; }
+.xj-set-btn-sm {
+  background: var(--vscode-button-background, #e8a040);
+  color: var(--vscode-button-foreground, #1a1a2e);
+  border: none; border-radius: 6px; padding: 6px 12px;
+  font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.xj-set-btn-sm:hover { opacity: 0.85; }
+
+/* ── Empty state ── */
+.xj-set-empty { text-align: center; color: var(--vscode-descriptionForeground, #888); padding: 40px; font-size: 14px; }
+
+/* ── Light theme overrides ── */
+.vscode-light .xj-set-panel { background: #fff; border-color: #e0e0e0; color: #333; }
+.vscode-light .xj-set-header { border-color: #e0e0e0; }
+.vscode-light .xj-set-tabs { border-color: #e0e0e0; }
+.vscode-light .xj-set-tab { color: #888; }
+.vscode-light .xj-set-tab:hover { color: #333; }
+.vscode-light .xj-set-tab-active { color: #c6613f; border-bottom-color: #c6613f; }
+.vscode-light .xj-set-header-title { color: #c6613f; }
+.vscode-light .xj-set-mode-sel { background: #f0f0f0; border-color: #ccc; color: #333; }
+.vscode-light .xj-set-sel { background: #f0f0f0; border-color: #ccc; color: #333; }
+.vscode-light .xj-set-num { background: #f0f0f0; border-color: #ccc; color: #333; }
+.vscode-light .xj-set-inp { background: #f0f0f0; border-color: #ccc; color: #333; }
+.vscode-light .xj-set-slider { background: rgba(0,0,0,0.15); }
+.vscode-light .xj-set-toggle input:checked + .xj-set-slider { background: #c6613f; }
+.vscode-light .xj-set-btn-sm { background: #c6613f; color: #fff; }
+.vscode-light .xj-set-item { border-color: rgba(0,0,0,0.06); }
+.vscode-light .xj-set-item-desc { color: #666; }
+.vscode-light .xj-set-range { accent-color: #c6613f; }
+.vscode-light .xj-set-range-val { color: #c6613f; }
+.vscode-light .xj-set-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
+.vscode-light .xj-set-mode-sel:focus,
+.vscode-light .xj-set-sel:focus,
+.vscode-light .xj-set-num:focus,
+.vscode-light .xj-set-inp:focus { border-color: #c6613f; }
+.vscode-light .xj-set-mode-modal { background: rgba(0,0,0,0.4); }
+
+/* ── CodeKey Settings Tab ── */
+.xj-ck-settings-section {
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.xj-ck-section-title {
+  font-size: 14px; font-weight: 600; color: #e8a040; margin-bottom: 10px;
+}
+.xj-ck-settings-hint {
+  font-size: 12px; color: var(--vscode-descriptionForeground, #888); margin-bottom: 10px;
+}
+.xj-ck-code-large {
+  font-size: 36px; font-weight: 700; letter-spacing: 6px;
+  color: #e8a040; background: rgba(232,160,64,0.08);
+  display: inline-block; padding: 12px 24px; border-radius: 8px;
+  margin: 8px 0;
+}
+.xj-ck-settings-ttl { font-size: 12px; color: #888; margin-top: 4px; }
+.xj-ck-connect-info { font-size: 13px; color: var(--vscode-foreground, #ddd); margin-bottom: 6px; }
+.xj-ck-indicator-online {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #4ec9b0; margin-right: 6px;
+}
+.xj-ck-settings-devlist {
+  list-style: none; padding: 0; margin: 8px 0;
+}
+.xj-ck-settings-devlist li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; border-radius: 6px;
+  background: rgba(255,255,255,0.04); margin-bottom: 4px;
+  font-size: 12px;
+}
+.xj-ck-dev-status { font-size: 11px; }
+.xj-set-btn-danger { background: #f14c4c !important; color: #fff !important; }
+.xj-set-btn-danger:hover { opacity: 0.8; }
+
+.vscode-light .xj-ck-settings-section { border-color: rgba(0,0,0,0.08); }
+.vscode-light .xj-ck-section-title { color: #c6613f; }
+.vscode-light .xj-ck-code-large { color: #c6613f; background: rgba(198,97,63,0.08); }
+.vscode-light .xj-ck-settings-devlist li { background: rgba(0,0,0,0.03); }
+.vscode-light .xj-set-btn-danger { background: #d32f2f !important; }

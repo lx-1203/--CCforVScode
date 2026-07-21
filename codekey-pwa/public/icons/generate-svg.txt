@@ -1,0 +1,1 @@
+SVG icons will be generated at build time from the base SVG below

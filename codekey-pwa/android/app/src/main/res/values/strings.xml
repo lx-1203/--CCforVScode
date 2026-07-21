@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">星迹CodeKey</string>
+    <string name="title_activity_main">星迹CodeKey</string>
+    <string name="package_name">com.xingji.codekey</string>
+    <string name="custom_url_scheme">com.xingji.codekey</string>
+</resources>
