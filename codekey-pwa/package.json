@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
+    "test": "vitest run",
     "dev": "vite --host 0.0.0.0",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy"
@@ -24,6 +25,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.7.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.100.0"
   }
 }
